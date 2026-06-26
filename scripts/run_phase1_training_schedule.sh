@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/mnt/nvme1/lz/fourier_layerwise_weather"
+ROOT="${STEADYSKY_WORK:?Set STEADYSKY_WORK to the experiment working directory}"
 REPO="${ROOT}/repos/steadysky-fourier"
 MAKANI="${ROOT}/repos/makani"
 DATA="${ROOT}/data/walker_ocean_1deg_full"
@@ -9,8 +9,8 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier [epochs_per_stage]}"
-EPOCHS_PER_STAGE="${2:-25}"
+ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier [comma_separated_stage_epochs]}"
+STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
 
 if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" ]]; then
   echo "ARM must be raw or fourier" >&2
@@ -25,11 +25,18 @@ else
   RUN_NUM="phase1_fourier_edim384"
 fi
 
+IFS=',' read -r -a STAGE_EPOCHS <<< "${STAGE_EPOCHS_CSV}"
+if [[ "${#STAGE_EPOCHS[@]}" -ne "${#STAGES[@]}" ]]; then
+  echo "Expected ${#STAGES[@]} stage epoch values, got ${#STAGE_EPOCHS[@]}: ${STAGE_EPOCHS_CSV}" >&2
+  exit 4
+fi
+
 cd "${MAKANI}"
 mkdir -p "${ROOT}/runs/${CONFIG_NAME}/${RUN_NUM}" "${ROOT}/logs"
 
 for IDX in "${!STAGES[@]}"; do
   STAGE="${STAGES[$IDX]}"
+  STAGE_EPOCHS_THIS="${STAGE_EPOCHS[$IDX]}"
   TARGET="${DATA}/${STAGE}"
   if [[ ! -d "${TARGET}" ]]; then
     echo "Missing stage data: ${TARGET}" >&2
@@ -37,17 +44,27 @@ for IDX in "${!STAGES[@]}"; do
   fi
 
   ln -sfn "${TARGET}" "${DATA}/train_current_${ARM}"
-  STAGE_END_EPOCH=$(( (IDX + 1) * EPOCHS_PER_STAGE ))
+  STAGE_END_EPOCH=0
+  for J in $(seq 0 "${IDX}"); do
+    STAGE_END_EPOCH=$(( STAGE_END_EPOCH + STAGE_EPOCHS[$J] ))
+  done
   LOG="${ROOT}/logs/${RUN_NUM}_stage$((IDX + 1))_${STAGE}.log"
-  echo "[$(date -Is)] ARM=${ARM} stage=$((IDX + 1))/${#STAGES[@]} data=${STAGE} max_epochs=${STAGE_END_EPOCH}" | tee -a "${LOG}"
+  echo "[$(date -Is)] ARM=${ARM} stage=$((IDX + 1))/${#STAGES[@]} data=${STAGE} stage_epochs=${STAGE_EPOCHS_THIS} max_epochs=${STAGE_END_EPOCH}" | tee -a "${LOG}"
 
-  python - <<PY
+  STAGE_INDEX=$((IDX + 1)) ROOT="${ROOT}" CONFIG="${CONFIG}" ARM="${ARM}" RUN_NUM="${RUN_NUM}" STAGE_END_EPOCH="${STAGE_END_EPOCH}" python - <<'PY'
+import os
 from pathlib import Path
-src = Path("${CONFIG}")
+root = os.environ["ROOT"]
+src = Path(os.environ["CONFIG"])
+arm = os.environ["ARM"]
+run_num = os.environ["RUN_NUM"]
+stage_index = os.environ["STAGE_INDEX"]
+stage_end_epoch = os.environ["STAGE_END_EPOCH"]
 txt = src.read_text()
-txt = txt.replace('train_data_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/train_raw"', 'train_data_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/train_current_${ARM}"')
-txt = txt.replace('max_epochs: 300', 'max_epochs: ${STAGE_END_EPOCH}')
-out = Path("${ROOT}/configs/${RUN_NUM}_stage$((IDX + 1)).yaml")
+txt = txt.replace("${STEADYSKY_WORK}", root)
+txt = txt.replace(f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_raw"', f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_current_{arm}"')
+txt = txt.replace("max_epochs: 300", f"max_epochs: {stage_end_epoch}")
+out = Path(root) / "configs" / f"{run_num}_stage{stage_index}.yaml"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(txt)
 print(out)

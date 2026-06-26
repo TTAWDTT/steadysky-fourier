@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/mnt/nvme1/lz/fourier_layerwise_weather"
+ROOT="${STEADYSKY_WORK:?Set STEADYSKY_WORK to the experiment working directory}"
 REPO="${ROOT}/repos/steadysky-fourier"
 MAKANI="${ROOT}/repos/makani"
 DATA="${ROOT}/data/walker_ocean_1deg_full"
@@ -10,14 +10,16 @@ CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
 ln -sfn "${DATA}/train_raw" "${DATA}/train_current_preflight"
 mkdir -p "${ROOT}/configs" "${ROOT}/logs"
-python - <<'PY'
+ROOT="${ROOT}" python - <<'PY'
+import os
 from pathlib import Path
-root = Path("/mnt/nvme1/lz/fourier_layerwise_weather")
+root = Path(os.environ["ROOT"])
 src = root / "repos/steadysky-fourier/configs/sfno_walker_1deg.yaml"
 txt = src.read_text()
-txt = txt.replace('train_data_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/train_raw"', 'train_data_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/train_current_preflight"')
+txt = txt.replace("${STEADYSKY_WORK}", str(root))
+txt = txt.replace(f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_raw"', f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_current_preflight"')
 txt = txt.replace('max_epochs: 300', 'max_epochs: 1')
-txt = txt.replace('valid_autoreg_steps: 119', 'valid_autoreg_steps: 1')
+txt = txt.replace('valid_autoreg_steps: 19', 'valid_autoreg_steps: 1')
 out = root / "configs/preflight_sfno_walker.yaml"
 out.write_text(txt)
 print(out)

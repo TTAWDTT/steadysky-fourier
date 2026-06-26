@@ -41,10 +41,10 @@ Concrete split after conversion:
 | Validation | `[1584, 1782)` | 198 |
 | Test | `[1782, 1980)` | 198 |
 
-The prepared Makani dataset is:
+The prepared Makani dataset is expected under:
 
 ```text
-/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full
+$STEADYSKY_WORK/data/walker_ocean_1deg_full
 ```
 
 NaN policy:
@@ -75,6 +75,35 @@ The 147.8M parameter model is selected for the first full-data causal test becau
 Parameter-count note: Makani counts complex-valued spectral weights by real-valued entries using `torch.view_as_real`, so these are the official counts to use in reports.
 
 Training-time validation uses `valid_autoreg_steps: 19`, matching the style of the official SFNO recipe. Paper-aligned long-rollout stability metrics are run after training from saved checkpoints, not at every training epoch.
+
+## Fourier Curriculum Schedule
+
+The initial low-frequency fields should be easier to fit than the later, higher-frequency stages. Therefore the Fourier arm uses an increasing epoch schedule rather than equal-length stages:
+
+| Stage | Fourier data | Epochs in stage | Cumulative epochs |
+|---:|---|---:|---:|
+| 1 | `train_lp004` | 10 | 10 |
+| 2 | `train_lp008` | 15 | 25 |
+| 3 | `train_lp016` | 20 | 45 |
+| 4 | `train_lp032` | 25 | 70 |
+| 5 | `train_lp064` | 35 | 105 |
+| 6 | `train_raw` | 45 | 150 |
+
+The raw baseline uses the same cumulative checkpoints, but each stage points to `train_raw`. This keeps the total optimizer-update budget aligned while allowing the Fourier curriculum to spend progressively more training time on harder, richer data.
+
+## Evaluation Horizon
+
+The 19-step rollout used during training is not the final evaluation. It is only a training-time monitor.
+
+The formal post-training evaluation should run substantially longer rollouts, preferably from multiple test initial conditions:
+
+| Evaluation | Minimum horizon | Preferred horizon |
+|---|---:|---:|
+| Short-horizon skill sanity | 19 months | 19-36 months |
+| Medium stability check | 60 months | 120 months |
+| Long-rollout stability | 120 months | all feasible test rollout length |
+
+For each horizon, report blow-up, drift, loss of seasonality or low-frequency structure, small-scale spectral ratio, and masked metrics for `tos/zos` over valid ocean cells.
 
 ## First Implementation Steps
 
