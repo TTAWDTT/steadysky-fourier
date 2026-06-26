@@ -91,6 +91,20 @@ The initial low-frequency fields should be easier to fit than the later, higher-
 
 The raw baseline uses the same cumulative checkpoints, but each stage points to `train_raw`. This keeps the total optimizer-update budget aligned while allowing the Fourier curriculum to spend progressively more training time on harder, richer data.
 
+## Early Stopping And Failure Rules
+
+Early stopping is treated as a training safety mechanism, not as an advantage for either arm.
+
+After every completed stage, the schedule scans all Makani logs for that arm and stops if any of these conditions are met:
+
+| Condition | Default threshold | Interpretation |
+|---|---:|---|
+| Non-finite training loss, validation loss, or gradient norm | any NaN/Inf | numerical failure |
+| Validation-loss explosion | latest validation loss > `1e6` | divergence |
+| Validation-loss plateau | no improvement > `1e-4` for 8 validation points after 20 validation points | optimization saturation |
+
+For the primary paired comparison, both arms should complete the planned 150 epochs whenever neither diverges. If an arm stops due to non-finite values or validation-loss explosion, report that as a stability or training failure. If an arm stops only because of plateau, compare the best checkpoint but clearly report the realized epoch/update budget so it is not confused with the strict equal-budget result.
+
 ## Evaluation Horizon
 
 The 19-step rollout used during training is not the final evaluation. It is only a training-time monitor.

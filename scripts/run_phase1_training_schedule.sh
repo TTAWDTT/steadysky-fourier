@@ -11,6 +11,10 @@ CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
 ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier [comma_separated_stage_epochs]}"
 STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
+EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-8}"
+EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
+EARLY_STOP_MIN_DELTA="${STEADYSKY_EARLY_STOP_MIN_DELTA:-1e-4}"
+EARLY_STOP_MAX_VALID_LOSS="${STEADYSKY_EARLY_STOP_MAX_VALID_LOSS:-1e6}"
 
 if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" ]]; then
   echo "ARM must be raw or fourier" >&2
@@ -80,6 +84,13 @@ PY
     --w_parallel_size=1 \
     --matmul_parallel_size=1 \
     --multistep_count=1 \
+    2>&1 | tee -a "${LOG}"
+
+  "${PYTHON}" "${REPO}/scripts/check_training_log.py" "${ROOT}"/logs/"${RUN_NUM}"_stage*.log \
+    --patience "${EARLY_STOP_PATIENCE}" \
+    --min-points "${EARLY_STOP_MIN_POINTS}" \
+    --min-delta "${EARLY_STOP_MIN_DELTA}" \
+    --max-valid-loss "${EARLY_STOP_MAX_VALID_LOSS}" \
     2>&1 | tee -a "${LOG}"
 done
 
