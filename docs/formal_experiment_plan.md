@@ -4,8 +4,8 @@
 
 | Arm | Architecture | Training data injection | Loss | Evaluation |
 |---|---|---|---|---|
-| Raw baseline | SFNO / Makani, `sfno_walker_1deg_edim192_layers8` | raw four-variable fields for all epochs | same Makani weighted L2 recipe | long rollout stability suite |
-| Fourier layerwise | SFNO / Makani, `sfno_walker_1deg_edim192_layers8` | cumulative low-to-high Fourier stages, ending raw | same Makani weighted L2 recipe | same long rollout stability suite |
+| Raw baseline | SFNO / Makani, `sfno_walker_1deg_edim384_layers8` | raw four-variable fields for all epochs | same Makani weighted L2 recipe | long rollout stability suite |
+| Fourier layerwise | SFNO / Makani, `sfno_walker_1deg_edim384_layers8` | cumulative low-to-high Fourier stages, ending raw | same Makani weighted L2 recipe | same long rollout stability suite |
 
 Both arms must use identical data split, normalization stats, optimizer settings, scheduler settings, seed policy, and total optimizer update count.
 
@@ -65,10 +65,10 @@ Train-split fill values:
 
 | Config | Parameters | Role |
 |---|---:|---|
-| `sfno_walker_1deg_edim192_layers8` | 72,339,076 | Phase 1 primary formal model |
-| `sfno_walker_1deg_edim384_layers8` | 289,332,484 | Larger-scale follow-up after the primary causal test |
+| `sfno_walker_1deg_edim384_layers8` | 76,997,392 | Phase 1 primary formal model |
+| `sfno_walker_1deg_edim192_layers8` | 19,255,696 | Engineering preflight / emergency budget fallback only |
 
-The 72M parameter model is large enough to be non-toy while still plausible on two RTX 6000 Ada GPUs. The 289M parameter version is retained for scale validation, not for the first formal run.
+The 77M parameter model is selected for the first full-data causal test because the GPU forward preflight succeeded with low memory use on RTX 6000 Ada. The 19M parameter version should not be reported as the main formal result unless the 77M run becomes infeasible.
 
 ## First Implementation Steps
 

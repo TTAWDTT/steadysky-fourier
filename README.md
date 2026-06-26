@@ -31,10 +31,10 @@ The first formal comparison is:
 
 | Arm | Model | Data injection |
 |---|---|---|
-| Baseline | `sfno_walker_1deg_edim192_layers8` | raw four-variable fields throughout training |
-| Ours | `sfno_walker_1deg_edim192_layers8` | cumulative low-to-high Fourier curriculum, ending on raw fields |
+| Baseline | `sfno_walker_1deg_edim384_layers8` | raw four-variable fields throughout training |
+| Ours | `sfno_walker_1deg_edim384_layers8` | cumulative low-to-high Fourier curriculum, ending on raw fields |
 
-The Phase 1 model has **72,339,076 trainable parameters**. A larger `edim384_layers8` configuration with **289,332,484 trainable parameters** is retained for later scale validation.
+The Phase 1 model has **76,997,392 trainable parameters**. A smaller `edim192_layers8` configuration with **19,255,696 trainable parameters** is retained only for engineering preflight and emergency budget fallback, not as the main formal result.
 
 Phase 2 will repeat the same Raw vs Fourier comparison on additional architectures after Phase 1 is complete.
 

@@ -32,6 +32,10 @@ def main() -> None:
             "out_channels": list(range(n_channels)),
             "N_in_channels": n_channels,
             "N_out_channels": n_channels,
+            "inp_chans": n_channels,
+            "out_chans": n_channels,
+            "inp_shape": (params["img_shape_x"], params["img_shape_y"]),
+            "out_shape": (params["img_shape_x"], params["img_shape_y"]),
             "enable_nhwc": False,
         }
     )
@@ -59,4 +63,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

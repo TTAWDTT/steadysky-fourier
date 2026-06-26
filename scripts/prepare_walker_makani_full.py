@@ -155,12 +155,21 @@ def _write_split(
             compression_opts=2,
             shuffle=True,
         )
-        hf.create_dataset("channel", data=np.array(CHANNELS, dtype="S"))
-        hf.create_dataset("lat", data=lat.astype(np.float32))
-        hf.create_dataset("lon", data=lon.astype(np.float32))
-        hf.create_dataset("timestamp", data=time[start:stop].astype(np.float64))
+        timestamp_ds = hf.create_dataset("timestamp", data=time[start:stop].astype(np.float64))
+        channel_ds = hf.create_dataset("channel", data=np.array(CHANNELS, dtype="S"))
+        lat_ds = hf.create_dataset("lat", data=lat.astype(np.float32))
+        lon_ds = hf.create_dataset("lon", data=lon.astype(np.float32))
         hf.create_dataset("valid_mask", data=valid_mask.astype(np.uint8))
         hf.create_dataset("nan_fill_values", data=fill_values.reshape(len(CHANNELS)).astype(np.float32))
+
+        timestamp_ds.make_scale("timestamp")
+        channel_ds.make_scale("channel")
+        lat_ds.make_scale("lat")
+        lon_ds.make_scale("lon")
+        fields.dims[0].attach_scale(timestamp_ds)
+        fields.dims[1].attach_scale(channel_ds)
+        fields.dims[2].attach_scale(lat_ds)
+        fields.dims[3].attach_scale(lon_ds)
 
         open_arrays = [_open_channel(source_root, ch) for ch in CHANNELS]
         try:
