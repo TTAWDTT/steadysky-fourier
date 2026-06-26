@@ -78,8 +78,7 @@ for BATCH_SIZE in "${BATCHES[@]}"; do
   STATUS=${PIPESTATUS[0]}
   set -e
 
-  MAX_GPU0_MIB=$(grep -E "memory footprint \\[GB\\]:" "${LOG}" | awk '{print int($NF * 1024)}' | tail -1)
-  MAX_GPU0_MIB="${MAX_GPU0_MIB:-unknown}"
+  MAX_GPU0_MIB=$(awk '/memory footprint \[GB\]:/ { value = int($NF * 1024) } END { if (value == "") print "unknown"; else print value }' "${LOG}")
   if [[ "${STATUS}" -eq 0 ]]; then
     RESULT="ok"
   else

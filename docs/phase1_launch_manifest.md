@@ -20,7 +20,8 @@ This document freezes the first formal training launch for the SFNO causal test.
 | Precision | bf16 |
 | Default launcher processes | 1 process per node |
 | Optional launcher processes | `STEADYSKY_NPROC_PER_NODE=2`, only after distributed smoke test passes |
-| Per-process batch size | 4 |
+| Per-process batch size | 16 |
+| Global batch size | 16 |
 | Total planned epochs | 150 |
 | Training-time validation rollout | 19 autoregressive steps |
 | Formal evaluation | Post-training long-rollout stability suite |
@@ -62,3 +63,5 @@ Formal training should run from the repository copy under `$STEADYSKY_WORK/repos
 The first launch uses `STEADYSKY_NPROC_PER_NODE=1` because the initial two-process launch failed before training with a runtime-level `free(): invalid pointer` in rank 1. This does not change the model, loss, data schedule, or epoch budget; it only avoids an unstable distributed startup path. A two-process launch can be restored through the environment variable after the distributed smoke test passes.
 
 The paired launcher runs `smoke_phase1_makani_launch.sh` before formal training unless `STEADYSKY_RUN_SMOKE=0` is set. The smoke test uses the same process count as the formal launcher by default.
+
+The batch-size choice is documented in `docs/phase1_batch_capacity.md`.
