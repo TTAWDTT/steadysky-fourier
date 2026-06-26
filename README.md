@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/steadysky-logo.png" alt="steadysky-fourier logo" width="520">
+</p>
+
 # steadysky-fourier
 
 **A low-to-high Fourier curriculum for long-rollout stability in weather and climate models.**
