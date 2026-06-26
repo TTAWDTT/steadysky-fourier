@@ -1,9 +1,5 @@
 # Model Training Protocol Audit
 
-See the canonical local audit saved in the original research workspace:
-
-`outputs/model_training_protocol_audit.md`
-
 This repository treats the following as locked for Phase 1:
 
 - Primary architecture: **SFNO / FourCastNet2 via NVIDIA Makani**
@@ -12,3 +8,8 @@ This repository treats the following as locked for Phase 1:
 - Evaluation target: long-rollout stability, including blow-up, drift, loss of seasonality, and small-scale spectral ratio
 - Dataset: four provided 1-degree variables, not full ERA5
 
+The canonical Phase 1 protocol is split across:
+
+- `docs/formal_experiment_plan.md`
+- `docs/phase1_launch_manifest.md`
+- `docs/phase1_batch_capacity.md`
