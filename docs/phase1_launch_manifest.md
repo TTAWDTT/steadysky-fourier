@@ -54,8 +54,7 @@ export STEADYSKY_WORK=/path/to/working/directory
 
 bash scripts/smoke_phase1_makani_launch.sh
 bash scripts/launch_phase1_pair.sh --dry-run
-bash scripts/run_phase1_training_schedule.sh raw
-bash scripts/run_phase1_training_schedule.sh fourier
+bash scripts/launch_phase1_pair.sh
 ```
 
 Formal training should run from the repository copy under `$STEADYSKY_WORK/repos/steadysky-fourier`, with Makani under `$STEADYSKY_WORK/repos/makani`.
@@ -65,3 +64,12 @@ The first launch uses `STEADYSKY_NPROC_PER_NODE=1` because the initial two-proce
 The paired launcher runs `smoke_phase1_makani_launch.sh` before formal training unless `STEADYSKY_RUN_SMOKE=0` is set. The smoke test uses the same process count as the formal launcher by default.
 
 The batch-size choice is documented in `docs/phase1_batch_capacity.md`.
+
+Diagnostic entry points:
+
+| Script | Purpose |
+|---|---|
+| `scripts/check_phase1_readiness.sh` | Verify paths, data stages, metadata, Makani environment, and GPU visibility |
+| `scripts/smoke_phase1_makani_launch.sh` | Validate Makani edim384 initialization and validation with the selected launcher settings |
+| `scripts/probe_phase1_batch_capacity.sh` | Run short real train+validation probes for candidate batch sizes |
+| `scripts/run_phase1_training_schedule.sh` | Run one arm schedule directly; normally called by the paired launcher |
