@@ -9,7 +9,7 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 NPROC_PER_NODE="${STEADYSKY_SMOKE_NPROC_PER_NODE:-1}"
-BATCH_SIZE="${STEADYSKY_SMOKE_BATCH_SIZE:-1}"
+BATCH_SIZE="${STEADYSKY_SMOKE_BATCH_SIZE:-16}"
 RUN_NUM="smoke_phase1_edim384_np${NPROC_PER_NODE}"
 
 if ! [[ "${NPROC_PER_NODE}" =~ ^[1-9][0-9]*$ ]]; then
