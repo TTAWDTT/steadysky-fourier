@@ -73,7 +73,6 @@ for BATCH_SIZE in "${BATCHES[@]}"; do
     --w_parallel_size=1 \
     --matmul_parallel_size=1 \
     --multistep_count=1 \
-    --skip_validation \
     --save_checkpoint=none \
     2>&1 | tee -a "${LOG}"
   STATUS=${PIPESTATUS[0]}
