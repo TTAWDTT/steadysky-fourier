@@ -51,6 +51,7 @@ If neither arm triggers a divergence condition, the primary comparison is the st
 ```bash
 export STEADYSKY_WORK=/path/to/working/directory
 
+bash scripts/smoke_phase1_makani_launch.sh
 bash scripts/launch_phase1_pair.sh --dry-run
 bash scripts/run_phase1_training_schedule.sh raw
 bash scripts/run_phase1_training_schedule.sh fourier
@@ -58,4 +59,6 @@ bash scripts/run_phase1_training_schedule.sh fourier
 
 Formal training should run from the repository copy under `$STEADYSKY_WORK/repos/steadysky-fourier`, with Makani under `$STEADYSKY_WORK/repos/makani`.
 
-The first launch uses `STEADYSKY_NPROC_PER_NODE=1` because the initial two-process smoke launch failed before training with a runtime-level `free(): invalid pointer` in rank 1. This does not change the model, loss, data schedule, or epoch budget; it only avoids an unstable distributed startup path. A two-process launch can be restored through the environment variable after the distributed smoke test passes.
+The first launch uses `STEADYSKY_NPROC_PER_NODE=1` because the initial two-process launch failed before training with a runtime-level `free(): invalid pointer` in rank 1. This does not change the model, loss, data schedule, or epoch budget; it only avoids an unstable distributed startup path. A two-process launch can be restored through the environment variable after the distributed smoke test passes.
+
+The paired launcher runs `smoke_phase1_makani_launch.sh` before formal training unless `STEADYSKY_RUN_SMOKE=0` is set. The smoke test uses the same process count as the formal launcher by default.
