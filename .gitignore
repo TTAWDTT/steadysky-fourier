@@ -1,0 +1,23 @@
+# Data and generated artifacts
+data/
+outputs/
+runs/
+checkpoints/
+*.h5
+*.nc
+*.npy
+*.npz
+*.zarr/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
