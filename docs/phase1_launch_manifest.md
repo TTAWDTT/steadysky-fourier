@@ -18,7 +18,8 @@ This document freezes the first formal training launch for the SFNO causal test.
 | Optimizer | AdamW |
 | Learning rate | `1e-3` |
 | Precision | bf16 |
-| GPUs | 2 |
+| Default launcher processes | 1 process per node |
+| Optional launcher processes | `STEADYSKY_NPROC_PER_NODE=2`, only after distributed smoke test passes |
 | Per-process batch size | 4 |
 | Total planned epochs | 150 |
 | Training-time validation rollout | 19 autoregressive steps |
@@ -56,3 +57,5 @@ bash scripts/run_phase1_training_schedule.sh fourier
 ```
 
 Formal training should run from the repository copy under `$STEADYSKY_WORK/repos/steadysky-fourier`, with Makani under `$STEADYSKY_WORK/repos/makani`.
+
+The first launch uses `STEADYSKY_NPROC_PER_NODE=1` because the initial two-process smoke launch failed before training with a runtime-level `free(): invalid pointer` in rank 1. This does not change the model, loss, data schedule, or epoch budget; it only avoids an unstable distributed startup path. A two-process launch can be restored through the environment variable after the distributed smoke test passes.
