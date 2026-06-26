@@ -5,6 +5,7 @@ base_config: &BASE_CONFIG
     valid_data_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/valid_raw"
     inf_data_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/test_raw"
     exp_dir: "/mnt/nvme1/lz/fourier_layerwise_weather/runs"
+    multifiles: !!bool True
 
     min_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/stats_raw/mins.npy"
     max_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/stats_raw/maxs.npy"
@@ -34,7 +35,7 @@ base_config: &BASE_CONFIG
 
     losses:
     -   type: "l2"
-        channel_weights: "auto"
+        channel_weights: "constant"
         temp_diff_normalization: !!bool True
         parameters:
             squared: !!bool True
@@ -114,4 +115,3 @@ sfno_walker_1deg_edim384_layers8:
     embed_dim: 384
     num_layers: 8
     batch_size: 4
-

@@ -41,8 +41,17 @@ def main() -> None:
     )
 
     model = SphericalFourierNeuralOperatorNet(**params)
-    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    total = sum(p.numel() for p in model.parameters())
+    def count_param_entries(include_only_trainable: bool) -> int:
+        total = 0
+        for p in model.parameters():
+            if include_only_trainable and not p.requires_grad:
+                continue
+            view = torch.view_as_real(p) if p.is_complex() else p
+            total += view.numel()
+        return total
+
+    trainable = count_param_entries(include_only_trainable=True)
+    total = count_param_entries(include_only_trainable=False)
     payload = {
         "config": args.config,
         "nettype": params.get("nettype"),

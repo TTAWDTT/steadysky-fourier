@@ -20,6 +20,7 @@ MultifilesDataset default dataset_name="fields".
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
@@ -54,6 +55,11 @@ def _load_coords(source_root: Path) -> Tuple[np.ndarray, np.ndarray, np.ndarray]
         da["lat"].values.astype(np.float32),
         da["lon"].values.astype(np.float32),
     )
+
+
+def _uniform_timestamps(n_time: int, dt_hours: int, start_year: int = 1850) -> np.ndarray:
+    start = dt.datetime(start_year, 1, 1, tzinfo=dt.timezone.utc).timestamp()
+    return start + np.arange(n_time, dtype=np.float64) * float(dt_hours * 3600)
 
 
 def _validate_grid(source_root: Path) -> Dict[str, object]:
@@ -139,8 +145,9 @@ def _write_split(
     block_size: int,
     fill_values: np.ndarray,
     valid_mask: np.ndarray,
+    timestamps: np.ndarray,
 ) -> Path:
-    time, lat, lon = _load_coords(source_root)
+    _, lat, lon = _load_coords(source_root)
     split_dir = output_root / f"{split_name}_raw"
     split_dir.mkdir(parents=True, exist_ok=True)
     out_path = split_dir / f"{split_name}.h5"
@@ -155,7 +162,7 @@ def _write_split(
             compression_opts=2,
             shuffle=True,
         )
-        timestamp_ds = hf.create_dataset("timestamp", data=time[start:stop].astype(np.float64))
+        timestamp_ds = hf.create_dataset("timestamp", data=timestamps[start:stop].astype(np.float64))
         channel_ds = hf.create_dataset("channel", data=np.array(CHANNELS, dtype="S"))
         lat_ds = hf.create_dataset("lat", data=lat.astype(np.float32))
         lon_ds = hf.create_dataset("lon", data=lon.astype(np.float32))
@@ -267,12 +274,12 @@ def _compute_stats(train_h5: Path, output_root: Path, block_size: int) -> Dict[s
     return {k: str(v) for k, v in paths.items()}
 
 
-def _write_metadata(output_root: Path, grid_report: Dict[str, object]) -> Path:
+def _write_metadata(output_root: Path, grid_report: Dict[str, object], dt_hours: int) -> Path:
     time, lat, lon = _load_coords(Path(grid_report["source_root"]))
     payload = {
         "dataset_name": "walker_ocean_1deg_full",
         "h5_path": "fields",
-        "dhours": 730,
+        "dhours": dt_hours,
         "coords": {
             "grid_type": "equiangular",
             "channel": CHANNELS,
@@ -283,6 +290,7 @@ def _write_metadata(output_root: Path, grid_report: Dict[str, object]) -> Path:
             "description": "Full 1-degree four-variable WalkerNet ocean/climate fields prepared for Makani.",
             "source_time_units": "days since 0001-01-01 00:00:00, calendar=365_day",
             "source_time_first_last": [float(time[0]), float(time[-1])],
+            "timestamp_policy": f"Uniform synthetic timestamps at {dt_hours} hour intervals from 1850-01-01 UTC, because Makani expects Unix-second timestamps.",
         },
     }
     out = output_root / "metadata" / "data.json"
@@ -296,6 +304,7 @@ def main() -> None:
     parser.add_argument("--source-root", required=True, type=Path)
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--block-size", type=int, default=24)
+    parser.add_argument("--dt-hours", type=int, default=730)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
@@ -312,6 +321,7 @@ def main() -> None:
         splits["train"][1],
         args.block_size,
     )
+    timestamps = _uniform_timestamps(int(grid_report["time_length"]), args.dt_hours)
 
     split_paths = {}
     for name, (start, stop) in splits.items():
@@ -325,11 +335,12 @@ def main() -> None:
                 args.block_size,
                 fill_values,
                 valid_mask,
+                timestamps,
             )
         )
 
     stats_paths = _compute_stats(Path(split_paths["train"]), args.output_root, args.block_size)
-    metadata_path = _write_metadata(args.output_root, grid_report)
+    metadata_path = _write_metadata(args.output_root, grid_report, args.dt_hours)
 
     manifest = {
         "dataset": "walker_ocean_1deg_full",
@@ -341,6 +352,8 @@ def main() -> None:
         "split_paths": split_paths,
         "stats_paths": stats_paths,
         "metadata_path": str(metadata_path),
+        "dt_hours": int(args.dt_hours),
+        "timestamp_first_last_unix_seconds": [float(timestamps[0]), float(timestamps[-1])],
         "grid_report": grid_report,
         "nan_policy": {
             "strategy": "Fill non-finite source values with train-split channel means before writing HDF5 fields.",

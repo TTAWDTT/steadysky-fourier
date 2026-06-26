@@ -4,10 +4,12 @@
 
 | Arm | Architecture | Training data injection | Loss | Evaluation |
 |---|---|---|---|---|
-| Raw baseline | SFNO / Makani, `sfno_walker_1deg_edim384_layers8` | raw four-variable fields for all epochs | same Makani weighted L2 recipe | long rollout stability suite |
-| Fourier layerwise | SFNO / Makani, `sfno_walker_1deg_edim384_layers8` | cumulative low-to-high Fourier stages, ending raw | same Makani weighted L2 recipe | same long rollout stability suite |
+| Raw baseline | SFNO / Makani, `sfno_walker_1deg_edim384_layers8` | raw four-variable fields for all epochs | same Makani L2 recipe | long rollout stability suite |
+| Fourier layerwise | SFNO / Makani, `sfno_walker_1deg_edim384_layers8` | cumulative low-to-high Fourier stages, ending raw | same Makani L2 recipe | same long rollout stability suite |
 
 Both arms must use identical data split, normalization stats, optimizer settings, scheduler settings, seed policy, and total optimizer update count.
+
+Loss note: Makani's official SFNO config uses `channel_weights: auto`, but that helper assumes ERA5-style variable names and pressure-level suffixes. It fails on the four Walker variables (`tauu`, `tauv`, `tos`, `zos`). Phase 1 therefore uses `channel_weights: constant` with `temp_diff_normalization: true` for both arms.
 
 ## Data
 
@@ -65,10 +67,12 @@ Train-split fill values:
 
 | Config | Parameters | Role |
 |---|---:|---|
-| `sfno_walker_1deg_edim384_layers8` | 76,997,392 | Phase 1 primary formal model |
-| `sfno_walker_1deg_edim192_layers8` | 19,255,696 | Engineering preflight / emergency budget fallback only |
+| `sfno_walker_1deg_edim384_layers8` | 147,776,272 | Phase 1 primary formal model |
+| `sfno_walker_1deg_edim192_layers8` | 36,950,416 | Engineering preflight / emergency budget fallback only |
 
-The 77M parameter model is selected for the first full-data causal test because the GPU forward preflight succeeded with low memory use on RTX 6000 Ada. The 19M parameter version should not be reported as the main formal result unless the 77M run becomes infeasible.
+The 147.8M parameter model is selected for the first full-data causal test because the Makani Trainer preflight succeeded on RTX 6000 Ada. The 37.0M parameter version should not be reported as the main formal result unless the primary run becomes infeasible.
+
+Parameter-count note: Makani counts complex-valued spectral weights by real-valued entries using `torch.view_as_real`, so these are the official counts to use in reports.
 
 ## First Implementation Steps
 
