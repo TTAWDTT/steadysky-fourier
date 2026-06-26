@@ -15,6 +15,18 @@ EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-8}"
 EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
 EARLY_STOP_MIN_DELTA="${STEADYSKY_EARLY_STOP_MIN_DELTA:-1e-4}"
 EARLY_STOP_MAX_VALID_LOSS="${STEADYSKY_EARLY_STOP_MAX_VALID_LOSS:-1e6}"
+NPROC_PER_NODE="${STEADYSKY_NPROC_PER_NODE:-1}"
+BATCH_SIZE="${STEADYSKY_BATCH_SIZE:-4}"
+
+if ! [[ "${NPROC_PER_NODE}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "STEADYSKY_NPROC_PER_NODE must be a positive integer, got: ${NPROC_PER_NODE}" >&2
+  exit 5
+fi
+
+if ! [[ "${BATCH_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "STEADYSKY_BATCH_SIZE must be a positive integer, got: ${BATCH_SIZE}" >&2
+  exit 6
+fi
 
 if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" ]]; then
   echo "ARM must be raw or fourier" >&2
@@ -53,7 +65,7 @@ for IDX in "${!STAGES[@]}"; do
     STAGE_END_EPOCH=$(( STAGE_END_EPOCH + STAGE_EPOCHS[$J] ))
   done
   LOG="${ROOT}/logs/${RUN_NUM}_stage$((IDX + 1))_${STAGE}.log"
-  echo "[$(date -Is)] ARM=${ARM} stage=$((IDX + 1))/${#STAGES[@]} data=${STAGE} stage_epochs=${STAGE_EPOCHS_THIS} max_epochs=${STAGE_END_EPOCH}" | tee -a "${LOG}"
+  echo "[$(date -Is)] ARM=${ARM} stage=$((IDX + 1))/${#STAGES[@]} data=${STAGE} stage_epochs=${STAGE_EPOCHS_THIS} max_epochs=${STAGE_END_EPOCH} nproc_per_node=${NPROC_PER_NODE} batch_size=${BATCH_SIZE}" | tee -a "${LOG}"
 
   STAGE_INDEX=$((IDX + 1)) ROOT="${ROOT}" CONFIG="${CONFIG}" ARM="${ARM}" RUN_NUM="${RUN_NUM}" STAGE_END_EPOCH="${STAGE_END_EPOCH}" python - <<'PY'
 import os
@@ -74,12 +86,12 @@ out.write_text(txt)
 print(out)
 PY
 
-  "${PYTHON}" -m torch.distributed.run --standalone --nproc_per_node=2 -m makani.train \
+  "${PYTHON}" -m torch.distributed.run --standalone --nproc_per_node="${NPROC_PER_NODE}" -m makani.train \
     --yaml_config="${ROOT}/configs/${RUN_NUM}_stage$((IDX + 1)).yaml" \
     --config="${CONFIG_NAME}" \
     --run_num="${RUN_NUM}" \
     --amp_mode=bf16 \
-    --batch_size=4 \
+    --batch_size="${BATCH_SIZE}" \
     --h_parallel_size=1 \
     --w_parallel_size=1 \
     --matmul_parallel_size=1 \

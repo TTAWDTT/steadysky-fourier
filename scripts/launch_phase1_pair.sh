@@ -5,6 +5,9 @@ ROOT="${STEADYSKY_WORK:?Set STEADYSKY_WORK to the experiment working directory}"
 REPO="${ROOT}/repos/steadysky-fourier"
 STAGE_EPOCHS_CSV="${STEADYSKY_STAGE_EPOCHS:-10,15,20,25,35,45}"
 ORDER="${STEADYSKY_PHASE1_ORDER:-raw,fourier}"
+NPROC_PER_NODE="${STEADYSKY_NPROC_PER_NODE:-1}"
+BATCH_SIZE="${STEADYSKY_BATCH_SIZE:-4}"
+RUN_SMOKE="${STEADYSKY_RUN_SMOKE:-1}"
 DRY_RUN=0
 
 if [[ "${1:-}" == "--dry-run" ]]; then
@@ -24,6 +27,10 @@ done
 
 cd "${REPO}"
 bash scripts/check_phase1_readiness.sh
+if [[ "${RUN_SMOKE}" == "1" ]]; then
+  STEADYSKY_SMOKE_NPROC_PER_NODE="${STEADYSKY_SMOKE_NPROC_PER_NODE:-${NPROC_PER_NODE}}" \
+    bash scripts/smoke_phase1_makani_launch.sh
+fi
 
 mkdir -p "${ROOT}/logs"
 MANIFEST="${ROOT}/logs/phase1_pair_launch_$(date -u +%Y%m%dT%H%M%SZ).txt"
@@ -33,6 +40,9 @@ MANIFEST="${ROOT}/logs/phase1_pair_launch_$(date -u +%Y%m%dT%H%M%SZ).txt"
   echo "repo=${REPO}"
   echo "stage_epochs=${STAGE_EPOCHS_CSV}"
   echo "order=${ORDER}"
+  echo "nproc_per_node=${NPROC_PER_NODE}"
+  echo "batch_size=${BATCH_SIZE}"
+  echo "run_smoke=${RUN_SMOKE}"
   echo "dry_run=${DRY_RUN}"
   echo
   echo "commands:"
