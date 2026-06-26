@@ -69,6 +69,17 @@ Total: **150 epochs**.
 
 The raw baseline is split into the same cumulative epoch endpoints, but every stage uses `train_raw`. This keeps the total training budget aligned.
 
+## Batch And Launch
+
+Phase 1 currently launches Makani with one process and global batch 16:
+
+```text
+STEADYSKY_NPROC_PER_NODE=1
+STEADYSKY_BATCH_SIZE=16
+```
+
+The one-process path is used because the two-process launcher failed before training on the current machine. Batch 16 was selected after short real train+validation capacity probes; batch 24 OOMed.
+
 ## Evaluation
 
 Training-time validation is only a health check. It uses a short autoregressive rollout so that training does not spend most of its time evaluating.
@@ -110,13 +121,16 @@ python scripts/make_fourier_curriculum_stages.py \
   --cutoffs 4,8,16,32,64
 ```
 
-Run Phase 1 schedules:
+Check the launch plan:
 
 ```bash
-bash scripts/check_phase1_readiness.sh
-bash scripts/smoke_phase1_makani_launch.sh
-bash scripts/probe_phase1_batch_capacity.sh
 bash scripts/launch_phase1_pair.sh --dry-run
-bash scripts/run_phase1_training_schedule.sh raw
-bash scripts/run_phase1_training_schedule.sh fourier
 ```
+
+Run the paired Phase 1 training:
+
+```bash
+bash scripts/launch_phase1_pair.sh
+```
+
+The paired launcher runs readiness checks and a Makani smoke test before training, then runs the raw baseline followed by the Fourier curriculum. Lower-level scripts are kept for diagnostics and documented in `docs/phase1_launch_manifest.md`.
