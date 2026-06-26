@@ -48,7 +48,8 @@ if [[ "${#STAGE_EPOCHS[@]}" -ne "${#STAGES[@]}" ]]; then
 fi
 
 cd "${MAKANI}"
-mkdir -p "${ROOT}/runs/${CONFIG_NAME}/${RUN_NUM}" "${ROOT}/logs"
+RUN_DIR="${ROOT}/runs/${CONFIG_NAME}/${RUN_NUM}"
+mkdir -p "${RUN_DIR}/training_checkpoints" "${ROOT}/logs"
 
 for IDX in "${!STAGES[@]}"; do
   STAGE="${STAGES[$IDX]}"
