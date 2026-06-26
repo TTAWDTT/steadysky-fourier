@@ -50,6 +50,7 @@ If neither arm triggers a divergence condition, the primary comparison is the st
 ```bash
 export STEADYSKY_WORK=/path/to/working/directory
 
+bash scripts/launch_phase1_pair.sh --dry-run
 bash scripts/run_phase1_training_schedule.sh raw
 bash scripts/run_phase1_training_schedule.sh fourier
 ```

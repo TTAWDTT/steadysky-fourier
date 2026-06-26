@@ -114,6 +114,7 @@ Run Phase 1 schedules:
 
 ```bash
 bash scripts/check_phase1_readiness.sh
+bash scripts/launch_phase1_pair.sh --dry-run
 bash scripts/run_phase1_training_schedule.sh raw
 bash scripts/run_phase1_training_schedule.sh fourier
 ```
