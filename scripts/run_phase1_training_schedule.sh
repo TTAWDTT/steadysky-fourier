@@ -41,6 +41,12 @@ else
   RUN_NUM="phase1_fourier_edim384"
 fi
 
+EXTERNAL_FOURIER_MARKER="${ROOT}/logs/phase1_fourier_external_run.marker"
+if [[ "${ARM}" == "fourier" && -f "${EXTERNAL_FOURIER_MARKER}" && "${STEADYSKY_FORCE_FOURIER_RUN:-0}" != "1" ]]; then
+  echo "Fourier arm is already handled by an external run: ${EXTERNAL_FOURIER_MARKER}"
+  exit 0
+fi
+
 IFS=',' read -r -a STAGE_EPOCHS <<< "${STAGE_EPOCHS_CSV}"
 if [[ "${#STAGE_EPOCHS[@]}" -ne "${#STAGES[@]}" ]]; then
   echo "Expected ${#STAGES[@]} stage epoch values, got ${#STAGE_EPOCHS[@]}: ${STAGE_EPOCHS_CSV}" >&2
