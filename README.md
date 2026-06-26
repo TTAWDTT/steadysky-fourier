@@ -113,7 +113,7 @@ python scripts/make_fourier_curriculum_stages.py \
 Run Phase 1 schedules:
 
 ```bash
+bash scripts/check_phase1_readiness.sh
 bash scripts/run_phase1_training_schedule.sh raw
 bash scripts/run_phase1_training_schedule.sh fourier
 ```
-
