@@ -31,8 +31,10 @@ The first formal comparison is:
 
 | Arm | Model | Data injection |
 |---|---|---|
-| Baseline | SFNO/Makani | raw four-variable fields throughout training |
-| Ours | SFNO/Makani | cumulative low-to-high Fourier curriculum, ending on raw fields |
+| Baseline | `sfno_walker_1deg_edim192_layers8` | raw four-variable fields throughout training |
+| Ours | `sfno_walker_1deg_edim192_layers8` | cumulative low-to-high Fourier curriculum, ending on raw fields |
+
+The Phase 1 model has **72,339,076 trainable parameters**. A larger `edim384_layers8` configuration with **289,332,484 trainable parameters** is retained for later scale validation.
 
 Phase 2 will repeat the same Raw vs Fourier comparison on additional architectures after Phase 1 is complete.
 
@@ -64,3 +66,10 @@ python scripts/prepare_walker_makani_full.py \
 
 It writes Makani-compatible HDF5 splits, metadata, normalization statistics, and a manifest.
 
+The current formal remote dataset is:
+
+```text
+/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full
+```
+
+It uses train/validation/test chronological splits of `1584/198/198` samples.

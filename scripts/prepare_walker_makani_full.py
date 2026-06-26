@@ -99,6 +99,37 @@ def _iter_time_blocks(start: int, stop: int, block_size: int) -> Iterable[Tuple[
         yield a, min(stop, a + block_size)
 
 
+def _compute_fill_values(source_root: Path, train_start: int, train_stop: int, block_size: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute train-only channel means and a time-invariant valid-data mask."""
+    sums = None
+    masks = []
+    for ch in CHANNELS:
+        da = _open_channel(source_root, ch)
+        try:
+            channel_sum = 0.0
+            channel_count = 0
+            first_mask = None
+            for a, b in _iter_time_blocks(train_start, train_stop, block_size):
+                x = da.isel(time=slice(a, b)).values.astype(np.float32)
+                valid = np.isfinite(x)
+                channel_sum += float(np.nansum(x))
+                channel_count += int(valid.sum())
+                if first_mask is None:
+                    first_mask = valid[0]
+            if channel_count == 0:
+                raise ValueError(f"{ch} has no finite values in the training split")
+            masks.append(first_mask.astype(bool))
+            value = channel_sum / float(channel_count)
+            if sums is None:
+                sums = []
+            sums.append(value)
+        finally:
+            da.close()
+    fill_values = np.asarray(sums, dtype=np.float32).reshape(1, len(CHANNELS), 1, 1)
+    valid_mask = np.stack(masks, axis=0)
+    return fill_values, valid_mask
+
+
 def _write_split(
     source_root: Path,
     output_root: Path,
@@ -106,6 +137,8 @@ def _write_split(
     start: int,
     stop: int,
     block_size: int,
+    fill_values: np.ndarray,
+    valid_mask: np.ndarray,
 ) -> Path:
     time, lat, lon = _load_coords(source_root)
     split_dir = output_root / f"{split_name}_raw"
@@ -126,6 +159,8 @@ def _write_split(
         hf.create_dataset("lat", data=lat.astype(np.float32))
         hf.create_dataset("lon", data=lon.astype(np.float32))
         hf.create_dataset("timestamp", data=time[start:stop].astype(np.float64))
+        hf.create_dataset("valid_mask", data=valid_mask.astype(np.uint8))
+        hf.create_dataset("nan_fill_values", data=fill_values.reshape(len(CHANNELS)).astype(np.float32))
 
         open_arrays = [_open_channel(source_root, ch) for ch in CHANNELS]
         try:
@@ -134,6 +169,7 @@ def _write_split(
                     [da.isel(time=slice(a, b)).values.astype(np.float32) for da in open_arrays],
                     axis=1,
                 )
+                block = np.where(np.isfinite(block), block, fill_values).astype(np.float32)
                 fields[a - start : b - start] = block
         finally:
             for da in open_arrays:
@@ -199,6 +235,8 @@ def _compute_stats(train_h5: Path, output_root: Path, block_size: int) -> Dict[s
         diff_stds = np.sqrt(diff_vars).astype(np.float32)
 
     paths = {
+        "valid_mask": stats_dir / "valid_mask.npy",
+        "nan_fill_values": stats_dir / "nan_fill_values.npy",
         "mins": stats_dir / "mins.npy",
         "maxs": stats_dir / "maxs.npy",
         "global_means": stats_dir / "global_means.npy",
@@ -214,6 +252,9 @@ def _compute_stats(train_h5: Path, output_root: Path, block_size: int) -> Dict[s
     np.save(paths["time_means"], time_means)
     np.save(paths["time_diff_means"], diff_means)
     np.save(paths["time_diff_stds"], diff_stds)
+    with h5py.File(train_h5, "r") as hf:
+        np.save(paths["valid_mask"], hf["valid_mask"][:].astype(bool))
+        np.save(paths["nan_fill_values"], hf["nan_fill_values"][:].astype(np.float32))
     return {k: str(v) for k, v in paths.items()}
 
 
@@ -256,10 +297,27 @@ def main() -> None:
     grid_report = _validate_grid(args.source_root)
     grid_report["source_root"] = str(args.source_root)
     splits = _split_indices(int(grid_report["time_length"]))
+    fill_values, valid_mask = _compute_fill_values(
+        args.source_root,
+        splits["train"][0],
+        splits["train"][1],
+        args.block_size,
+    )
 
     split_paths = {}
     for name, (start, stop) in splits.items():
-        split_paths[name] = str(_write_split(args.source_root, args.output_root, name, start, stop, args.block_size))
+        split_paths[name] = str(
+            _write_split(
+                args.source_root,
+                args.output_root,
+                name,
+                start,
+                stop,
+                args.block_size,
+                fill_values,
+                valid_mask,
+            )
+        )
 
     stats_paths = _compute_stats(Path(split_paths["train"]), args.output_root, args.block_size)
     metadata_path = _write_metadata(args.output_root, grid_report)
@@ -275,6 +333,13 @@ def main() -> None:
         "stats_paths": stats_paths,
         "metadata_path": str(metadata_path),
         "grid_report": grid_report,
+        "nan_policy": {
+            "strategy": "Fill non-finite source values with train-split channel means before writing HDF5 fields.",
+            "reason": "Makani's standard loader/loss does not mask NaN targets.",
+            "fill_values_by_channel": {ch: float(fill_values.reshape(-1)[i]) for i, ch in enumerate(CHANNELS)},
+            "valid_fraction_by_channel": {ch: float(valid_mask[i].mean()) for i, ch in enumerate(CHANNELS)},
+            "mask_usage": "Use valid_mask for masked evaluation of tos/zos over ocean-valid grid cells.",
+        },
     }
     manifest_path = args.output_root / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -283,4 +348,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

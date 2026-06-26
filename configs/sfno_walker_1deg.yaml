@@ -1,0 +1,117 @@
+base_config: &BASE_CONFIG
+    metadata_json_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/metadata/data.json"
+
+    train_data_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/train_raw"
+    valid_data_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/valid_raw"
+    inf_data_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/test_raw"
+    exp_dir: "/mnt/nvme1/lz/fourier_layerwise_weather/runs"
+
+    min_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/stats_raw/mins.npy"
+    max_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/stats_raw/maxs.npy"
+    time_means_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/stats_raw/time_means.npy"
+    global_means_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/stats_raw/global_means.npy"
+    global_stds_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/stats_raw/global_stds.npy"
+    time_diff_means_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/stats_raw/time_diff_means.npy"
+    time_diff_stds_path: "/mnt/nvme1/lz/fourier_layerwise_weather/data/walker_ocean_1deg_full/stats_raw/time_diff_stds.npy"
+
+    nettype: "SFNO"
+    model_grid_type: "equiangular"
+    sht_grid_type: "legendre-gauss"
+    filter_type: "linear"
+    scale_factor: 3
+    embed_dim: 192
+    num_layers: 8
+    complex_activation: "real"
+    normalization_layer: "instance_norm"
+    hard_thresholding_fraction: 1.0
+    use_mlp: !!bool True
+    mlp_mode: "serial"
+    mlp_ratio: 2
+    separable: !!bool False
+    operator_type: "dhconv"
+    activation_function: "gelu"
+    pos_embed: "none"
+
+    losses:
+    -   type: "l2"
+        channel_weights: "auto"
+        temp_diff_normalization: !!bool True
+        parameters:
+            squared: !!bool True
+
+    lr: 1E-3
+    max_epochs: 300
+    batch_size: 8
+    weight_decay: 0.0
+    optimizer_type: "AdamW"
+    optimizer_beta1: 0.9
+    optimizer_beta2: 0.95
+    optimizer_max_grad_norm: 32
+
+    scheduler: "ReduceLROnPlateau"
+    scheduler_T_max: 100
+    scheduler_factor: 0.5
+    scheduler_patience: 10
+    scheduler_step_size: 5
+    scheduler_gamma: 0.5
+    lr_warmup_steps: 0
+
+    img_shape_x: 180
+    img_shape_y: 360
+    n_years: 132
+    n_eval_samples: 198
+    n_train_samples_per_epoch: 1583
+    num_data_workers: 2
+    num_visualization_workers: 1
+    dt: 1
+    n_history: 0
+    prediction_type: "iterative"
+    valid_autoreg_steps: 119
+
+    ics_type: "specify_number"
+    save_raw_forecasts: !!bool True
+    save_channel: !!bool False
+    masked_acc: !!bool False
+    maskpath: None
+    perturb: !!bool False
+    add_noise: !!bool False
+    noise_std: 0.0
+
+    channel_names: ["tauu", "tauv", "tos", "zos"]
+    normalization: "zscore"
+
+    add_grid: !!bool False
+    gridtype: "sinusoidal"
+    grid_num_frequencies: 16
+    add_zenith: !!bool False
+    add_orography: !!bool False
+    add_landmask: !!bool False
+
+    pretrained: !!bool False
+    verbose: !!bool False
+    log_to_screen: !!bool True
+    log_to_wandb: !!bool False
+    log_video: 0
+    save_checkpoint: "legacy"
+    crop_size_x: None
+    crop_size_y: None
+
+    wireup_info: "mpi"
+    wireup_store: "tcp"
+    wandb_name: None
+    wandb_group: "steadysky_sfno_walker_1deg"
+    wandb_project: "steadysky_fourier"
+    wandb_entity: "none"
+
+sfno_walker_1deg_edim192_layers8:
+    <<: *BASE_CONFIG
+    embed_dim: 192
+    num_layers: 8
+    batch_size: 8
+
+sfno_walker_1deg_edim384_layers8:
+    <<: *BASE_CONFIG
+    embed_dim: 384
+    num_layers: 8
+    batch_size: 4
+
