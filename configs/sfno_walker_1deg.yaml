@@ -67,7 +67,7 @@ base_config: &BASE_CONFIG
     dt: 1
     n_history: 0
     prediction_type: "iterative"
-    valid_autoreg_steps: 119
+    valid_autoreg_steps: 19
 
     ics_type: "specify_number"
     save_raw_forecasts: !!bool True

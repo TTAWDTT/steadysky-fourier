@@ -74,6 +74,8 @@ The 147.8M parameter model is selected for the first full-data causal test becau
 
 Parameter-count note: Makani counts complex-valued spectral weights by real-valued entries using `torch.view_as_real`, so these are the official counts to use in reports.
 
+Training-time validation uses `valid_autoreg_steps: 19`, matching the style of the official SFNO recipe. Paper-aligned long-rollout stability metrics are run after training from saved checkpoints, not at every training epoch.
+
 ## First Implementation Steps
 
 1. Convert full NetCDF data to Makani HDF5.
