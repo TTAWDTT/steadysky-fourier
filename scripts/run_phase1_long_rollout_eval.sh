@@ -8,15 +8,15 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG_SOURCE="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_long_rollout_eval.sh raw|fourier [rollout_months]}"
+ARM="${1:?usage: run_phase1_long_rollout_eval.sh raw|fourier|mixed|residual [rollout_months]}"
 ROLLOUT_MONTHS="${2:-120}"
 NPROC_PER_NODE="${STEADYSKY_EVAL_NPROC_PER_NODE:-1}"
 BATCH_SIZE="${STEADYSKY_EVAL_BATCH_SIZE:-1}"
 DATE_STEP_HOURS="${STEADYSKY_EVAL_DATE_STEP_HOURS:-8760}"
 OUTPUT_MEMORY_BUFFER_SIZE="${STEADYSKY_EVAL_OUTPUT_MEMORY_BUFFER_SIZE:-0}"
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" ]]; then
-  echo "ARM must be raw or fourier" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" ]]; then
+  echo "ARM must be raw, fourier, mixed, or residual" >&2
   exit 2
 fi
 
@@ -40,7 +40,11 @@ if ! [[ "${BATCH_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
   exit 5
 fi
 
-RUN_NUM="phase1_${ARM}_edim384"
+if [[ "${ARM}" == "raw" || "${ARM}" == "fourier" ]]; then
+  RUN_NUM="phase1_${ARM}_edim384"
+else
+  RUN_NUM="phase2_${ARM}_edim384"
+fi
 CONFIG="${ROOT}/configs/${RUN_NUM}_eval_rollout${ROLLOUT_MONTHS}.yaml"
 LOG="${ROOT}/logs/${RUN_NUM}_eval_rollout${ROLLOUT_MONTHS}.log"
 
@@ -79,12 +83,12 @@ echo "[$(date -Is)] ARM=${ARM} rollout_months=${ROLLOUT_MONTHS} nproc_per_node=$
   --matmul_parallel_size=1 \
   --date_step="${DATE_STEP_HOURS}" \
   --output_channels tauu tauv tos zos \
-  --output_file="phase1_${ARM}_rollout${ROLLOUT_MONTHS}_forecasts.h5" \
+  --output_file="${RUN_NUM}_rollout${ROLLOUT_MONTHS}_forecasts.h5" \
   --output_memory_buffer_size="${OUTPUT_MEMORY_BUFFER_SIZE}" \
-  --metrics_file="phase1_${ARM}_rollout${ROLLOUT_MONTHS}_metrics.h5" \
-  --bias_file="phase1_${ARM}_rollout${ROLLOUT_MONTHS}_bias.h5" \
-  --spectrum_file="phase1_${ARM}_rollout${ROLLOUT_MONTHS}_spectrum.h5" \
-  --zonal_spectrum_file="phase1_${ARM}_rollout${ROLLOUT_MONTHS}_zonal_spectrum.h5" \
+  --metrics_file="${RUN_NUM}_rollout${ROLLOUT_MONTHS}_metrics.h5" \
+  --bias_file="${RUN_NUM}_rollout${ROLLOUT_MONTHS}_bias.h5" \
+  --spectrum_file="${RUN_NUM}_rollout${ROLLOUT_MONTHS}_spectrum.h5" \
+  --zonal_spectrum_file="${RUN_NUM}_rollout${ROLLOUT_MONTHS}_zonal_spectrum.h5" \
   2>&1 | tee -a "${LOG}"
 
 echo "[$(date -Is)] completed ${ARM} rollout${ROLLOUT_MONTHS} evaluation" | tee -a "${ROOT}/logs/${RUN_NUM}_eval_rollout${ROLLOUT_MONTHS}_complete.log"

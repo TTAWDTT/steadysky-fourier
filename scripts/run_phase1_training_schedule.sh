@@ -9,7 +9,7 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier [comma_separated_stage_epochs]}"
+ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual [comma_separated_stage_epochs]}"
 STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
 EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-0}"
 EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
@@ -34,17 +34,23 @@ if ! [[ "${START_STAGE}" =~ ^[1-9][0-9]*$ ]]; then
   exit 7
 fi
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" ]]; then
-  echo "ARM must be raw or fourier" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" ]]; then
+  echo "ARM must be raw, fourier, mixed, or residual" >&2
   exit 2
 fi
 
 if [[ "${ARM}" == "raw" ]]; then
   STAGES=(train_raw train_raw train_raw train_raw train_raw train_raw)
   RUN_NUM="phase1_raw_edim384"
-else
+elif [[ "${ARM}" == "fourier" ]]; then
   STAGES=(train_lp004 train_lp008 train_lp016 train_lp032 train_lp064 train_raw)
   RUN_NUM="phase1_fourier_edim384"
+elif [[ "${ARM}" == "mixed" ]]; then
+  STAGES=(train_mixed_lp004_r020 train_mixed_lp008_r030 train_mixed_lp016_r040 train_mixed_lp032_r050 train_mixed_lp064_r065 train_raw)
+  RUN_NUM="phase2_mixed_edim384"
+else
+  STAGES=(train_residual_lp004_l005 train_residual_lp008_l015 train_residual_lp016_l030 train_residual_lp032_l050 train_residual_lp064_l075 train_raw)
+  RUN_NUM="phase2_residual_edim384"
 fi
 
 EXTERNAL_FOURIER_MARKER="${ROOT}/logs/phase1_fourier_external_run.marker"
