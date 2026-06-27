@@ -98,6 +98,29 @@ The actual research claim is evaluated after training with long rollouts:
 
 This is inspired by long-rollout stability benchmarks such as *Can AI Weather Models Predict Beyond Two Weeks? A Quantitative Benchmark and Analysis of Long Rollouts*, but this repository is not a full ERA5 benchmark reproduction. Phase 1 is a controlled four-variable test of the data-injection idea.
 
+## Phase 1 Diagnostics
+
+The first 150-epoch SFNO comparison is deliberately interpreted as a **skill-vs-smoothing diagnostic**, not as a finished proof that Fourier curriculum improves long-range forecasting.
+
+The Fourier curriculum reduces some long-horizon RMSE values relative to the raw baseline, but the diagnostic plots show a more cautious story: pattern correlation does not consistently improve, Nino3.4 phase skill remains weak at long leads, and anomaly amplitude can be suppressed. In other words, part of the apparent stability gain may come from smoothing or attractor regularization rather than better long-range dynamics.
+
+| Diagnostic | What It Tests |
+|---|---|
+| RMSE and pattern ACC | Whether lower error also preserves spatial phase and structure |
+| Anomaly amplitude and variance ratio | Whether predictions collapse toward a smoother climatological state |
+| Nino3.4 skill and amplitude | Whether ENSO-like regional anomalies are tracked or damped |
+| Spectral energy ratios | Whether low-, mid-, and high-wavenumber energy are retained |
+
+![Phase 1 RMSE and ACC](assets/phase1/fig_skill_rmse_acc.png)
+
+![Phase 1 anomaly amplitude and variance](assets/phase1/fig_smoothing_amplitude_variance.png)
+
+![Phase 1 Nino3.4 skill vs smoothing](assets/phase1/fig_nino34_skill_vs_smoothing.png)
+
+![Phase 1 spectral energy ratios](assets/phase1/fig_spectral_energy_ratios.png)
+
+The current takeaway is modest: **Fourier layerwise training appears to change long-rollout error geometry, but the first run does not yet demonstrate strong long-range predictive skill.**
+
 ## Data And Artifacts
 
 This repository stores code, configs, protocols, and lightweight metadata only. It does not store source NetCDF files, generated HDF5 datasets, checkpoints, or rollout outputs.
