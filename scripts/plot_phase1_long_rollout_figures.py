@@ -140,20 +140,26 @@ def _read_truth(test_h5: Path, target_indices: np.ndarray) -> np.ndarray:
 def plot_nino34(
     out_dir: Path,
     lead_months: np.ndarray,
-    truth: np.ndarray,
-    raw: np.ndarray,
-    fourier: np.ndarray,
+    test_months: np.ndarray,
+    truth_full: np.ndarray,
+    base_indices: np.ndarray,
+    raw_traj: np.ndarray,
+    fourier_traj: np.ndarray,
     raw_rmse: np.ndarray,
     fourier_rmse: np.ndarray,
 ) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.7), constrained_layout=True)
+    fig, axes = plt.subplots(1, 2, figsize=(8.2, 2.9), constrained_layout=True)
     ax = axes[0]
-    ax.plot(lead_months, truth, color=TRUTH_COLOR, label="Truth")
-    ax.plot(lead_months, raw, color=RAW_COLOR, label="Raw baseline")
-    ax.plot(lead_months, fourier, color=FOURIER_COLOR, label="Fourier curriculum")
+    ax.plot(test_months, truth_full, color=TRUTH_COLOR, label="Truth", linewidth=2.0)
+    for i, base in enumerate(base_indices):
+        label_raw = "Raw rollout" if i == 0 else None
+        label_fourier = "Fourier rollout" if i == 0 else None
+        x = base + lead_months
+        ax.plot(x, raw_traj[i], color=RAW_COLOR, alpha=0.45, linewidth=1.0, label=label_raw)
+        ax.plot(x, fourier_traj[i], color=FOURIER_COLOR, alpha=0.55, linewidth=1.0, label=label_fourier)
     ax.axhline(0.0, color="#333333", linewidth=0.8, alpha=0.4)
-    ax.set_title("Nino3.4 tos anomaly")
-    ax.set_xlabel("Lead time (months)")
+    ax.set_title("Nino3.4 tos anomaly trajectories")
+    ax.set_xlabel("Test month index")
     ax.set_ylabel("Anomaly")
     ax.legend(loc="best")
 
@@ -165,6 +171,25 @@ def plot_nino34(
     ax.set_ylabel("RMSE")
     ax.legend(loc="best")
     _save(fig, out_dir / "fig_nino34_curve")
+
+
+def plot_nino34_lead_mean(
+    out_dir: Path,
+    lead_months: np.ndarray,
+    truth: np.ndarray,
+    raw: np.ndarray,
+    fourier: np.ndarray,
+) -> None:
+    fig, ax = plt.subplots(figsize=(4.4, 2.7), constrained_layout=True)
+    ax.plot(lead_months, truth, color=TRUTH_COLOR, label="Truth lead-mean")
+    ax.plot(lead_months, raw, color=RAW_COLOR, label="Raw lead-mean")
+    ax.plot(lead_months, fourier, color=FOURIER_COLOR, label="Fourier lead-mean")
+    ax.axhline(0.0, color="#333333", linewidth=0.8, alpha=0.4)
+    ax.set_title("Nino3.4 lead-mean diagnostic")
+    ax.set_xlabel("Lead time (months)")
+    ax.set_ylabel("Anomaly averaged over valid ICs")
+    ax.legend(loc="best")
+    _save(fig, out_dir / "fig_nino34_lead_mean_diagnostic")
 
 
 def plot_drift(out_dir: Path, lead_months: np.ndarray, drift: Dict[str, np.ndarray], rmse: Dict[str, np.ndarray]) -> None:
@@ -295,9 +320,16 @@ def main() -> None:
     nino_mask = _region_mask(lat, lon, (-5.0, 5.0), (190.0, 240.0)) & valid_mask[2]
 
     nino = {k: np.zeros(n_leads, dtype=np.float64) for k in ["truth", "raw", "fourier"]}
+    nino_traj = {k: np.zeros((len(slots), n_leads), dtype=np.float64) for k in ["truth", "raw", "fourier"]}
     nino_rmse = {k: np.zeros(n_leads, dtype=np.float64) for k in ["raw", "fourier"]}
     drift = {k: np.zeros((n_leads, len(CHANNELS)), dtype=np.float64) for k in ["raw", "fourier"]}
     rmse = {k: np.zeros((n_leads, len(CHANNELS)), dtype=np.float64) for k in ["raw", "fourier"]}
+
+    with h5py.File(test_h5, "r") as hf:
+        test_tos = hf["fields"][:, 2, :, :].astype(np.float32)
+    test_month_ids = (test_global_start + np.arange(test_tos.shape[0])) % 12
+    test_clim_nino = np.array([np.nanmean(np.where(nino_mask, time_means[m, 2], np.nan)) for m in test_month_ids])
+    truth_nino_full = _masked_mean(test_tos, nino_mask, axes=(1, 2)) - test_clim_nino
 
     selected_payload = {}
     for lead in lead_months:
@@ -311,6 +343,9 @@ def main() -> None:
         truth_nino_ic = _masked_mean(truth[:, 2], nino_mask, axes=(1, 2)) - clim_nino
         raw_nino_ic = _masked_mean(raw[:, 2], nino_mask, axes=(1, 2)) - clim_nino
         fourier_nino_ic = _masked_mean(fourier[:, 2], nino_mask, axes=(1, 2)) - clim_nino
+        nino_traj["truth"][:, lead] = truth_nino_ic
+        nino_traj["raw"][:, lead] = raw_nino_ic
+        nino_traj["fourier"][:, lead] = fourier_nino_ic
         nino["truth"][lead] = float(np.nanmean(truth_nino_ic))
         nino["raw"][lead] = float(np.nanmean(raw_nino_ic))
         nino["fourier"][lead] = float(np.nanmean(fourier_nino_ic))
@@ -329,7 +364,18 @@ def main() -> None:
         if int(lead) in SELECTED_LEADS:
             selected_payload[int(lead)] = (truth, raw, fourier)
 
-    plot_nino34(out_dir, lead_months, nino["truth"], nino["raw"], nino["fourier"], nino_rmse["raw"], nino_rmse["fourier"])
+    plot_nino34(
+        out_dir,
+        lead_months,
+        np.arange(truth_nino_full.shape[0]),
+        truth_nino_full,
+        base_indices,
+        nino_traj["raw"],
+        nino_traj["fourier"],
+        nino_rmse["raw"],
+        nino_rmse["fourier"],
+    )
+    plot_nino34_lead_mean(out_dir, lead_months, nino["truth"], nino["raw"], nino["fourier"])
     plot_drift(out_dir, lead_months, drift, rmse)
 
     for lead in SELECTED_LEADS:
@@ -343,6 +389,8 @@ def main() -> None:
         "base_test_indices": base_indices.astype(int).tolist(),
         "selected_leads_months": SELECTED_LEADS,
         "nino34": {k: v.tolist() for k, v in nino.items()},
+        "nino34_truth_full_test": truth_nino_full.tolist(),
+        "nino34_trajectories": {k: v.tolist() for k, v in nino_traj.items()},
         "nino34_rmse": {k: v.tolist() for k, v in nino_rmse.items()},
         "drift": {k: v.tolist() for k, v in drift.items()},
         "rmse": {k: v.tolist() for k, v in rmse.items()},
@@ -354,6 +402,10 @@ def main() -> None:
         out_dir / "phase1_rollout_diagnostics.npz",
         lead_months=lead_months,
         nino_truth=nino["truth"],
+        nino_truth_full_test=truth_nino_full,
+        nino_traj_truth=nino_traj["truth"],
+        nino_traj_raw=nino_traj["raw"],
+        nino_traj_fourier=nino_traj["fourier"],
         nino_raw=nino["raw"],
         nino_fourier=nino["fourier"],
         nino_rmse_raw=nino_rmse["raw"],
