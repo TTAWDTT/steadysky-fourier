@@ -173,6 +173,63 @@ def plot_nino34(
     _save(fig, out_dir / "fig_nino34_curve")
 
 
+def plot_nino34_clean(
+    out_dir: Path,
+    lead_months: np.ndarray,
+    base_indices: np.ndarray,
+    truth_traj: np.ndarray,
+    raw_traj: np.ndarray,
+    fourier_traj: np.ndarray,
+    raw_rmse: np.ndarray,
+    fourier_rmse: np.ndarray,
+) -> None:
+    truth_mean = truth_traj.mean(axis=0)
+    raw_mean = raw_traj.mean(axis=0)
+    fourier_mean = fourier_traj.mean(axis=0)
+    truth_lo, truth_hi = np.percentile(truth_traj, [10, 90], axis=0)
+    raw_lo, raw_hi = np.percentile(raw_traj, [10, 90], axis=0)
+    fourier_lo, fourier_hi = np.percentile(fourier_traj, [10, 90], axis=0)
+
+    fig, axes = plt.subplots(1, 2, figsize=(8.2, 2.9), constrained_layout=True)
+    ax = axes[0]
+    for mean, lo, hi, color, label in [
+        (truth_mean, truth_lo, truth_hi, TRUTH_COLOR, "Truth"),
+        (raw_mean, raw_lo, raw_hi, RAW_COLOR, "Raw baseline"),
+        (fourier_mean, fourier_lo, fourier_hi, FOURIER_COLOR, "Fourier curriculum"),
+    ]:
+        ax.plot(lead_months, mean, color=color, label=label)
+        ax.fill_between(lead_months, lo, hi, color=color, alpha=0.12, linewidth=0)
+    ax.axhline(0.0, color="#333333", linewidth=0.8, alpha=0.4)
+    ax.set_title("Nino3.4 anomaly mean and 10-90% range")
+    ax.set_xlabel("Lead time (months)")
+    ax.set_ylabel("Anomaly")
+    ax.legend(loc="best")
+
+    ax = axes[1]
+    ax.plot(lead_months, raw_rmse, color=RAW_COLOR, label="Raw baseline")
+    ax.plot(lead_months, fourier_rmse, color=FOURIER_COLOR, label="Fourier curriculum")
+    ax.set_title("Nino3.4 rollout RMSE")
+    ax.set_xlabel("Lead time (months)")
+    ax.set_ylabel("RMSE")
+    ax.legend(loc="best")
+    _save(fig, out_dir / "fig_nino34_summary")
+
+    fig, axes = plt.subplots(4, 2, figsize=(8.0, 8.2), constrained_layout=True)
+    axes = axes.flat
+    for i, base in enumerate(base_indices):
+        ax = axes[i]
+        ax.plot(lead_months, truth_traj[i], color=TRUTH_COLOR, label="Truth")
+        ax.plot(lead_months, raw_traj[i], color=RAW_COLOR, label="Raw")
+        ax.plot(lead_months, fourier_traj[i], color=FOURIER_COLOR, label="Fourier")
+        ax.axhline(0.0, color="#333333", linewidth=0.7, alpha=0.35)
+        ax.set_title(f"IC test month {int(base)}")
+        ax.set_xlabel("Lead")
+        ax.set_ylabel("Anom.")
+    axes[-1].axis("off")
+    axes[0].legend(loc="best", ncol=3)
+    _save(fig, out_dir / "fig_nino34_by_initial_condition")
+
+
 def plot_nino34_lead_mean(
     out_dir: Path,
     lead_months: np.ndarray,
@@ -375,6 +432,16 @@ def main() -> None:
         nino_rmse["raw"],
         nino_rmse["fourier"],
     )
+    plot_nino34_clean(
+        out_dir,
+        lead_months,
+        base_indices,
+        nino_traj["truth"],
+        nino_traj["raw"],
+        nino_traj["fourier"],
+        nino_rmse["raw"],
+        nino_rmse["fourier"],
+    )
     plot_nino34_lead_mean(out_dir, lead_months, nino["truth"], nino["raw"], nino["fourier"])
     plot_drift(out_dir, lead_months, drift, rmse)
 
@@ -392,6 +459,10 @@ def main() -> None:
         "nino34_truth_full_test": truth_nino_full.tolist(),
         "nino34_trajectories": {k: v.tolist() for k, v in nino_traj.items()},
         "nino34_rmse": {k: v.tolist() for k, v in nino_rmse.items()},
+        "nino34_lead0_max_abs_error": {
+            "raw": float(np.max(np.abs(nino_traj["raw"][:, 0] - nino_traj["truth"][:, 0]))),
+            "fourier": float(np.max(np.abs(nino_traj["fourier"][:, 0] - nino_traj["truth"][:, 0]))),
+        },
         "drift": {k: v.tolist() for k, v in drift.items()},
         "rmse": {k: v.tolist() for k, v in rmse.items()},
         "channels": CHANNELS,
