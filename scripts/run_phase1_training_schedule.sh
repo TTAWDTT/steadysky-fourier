@@ -11,12 +11,13 @@ CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
 ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier [comma_separated_stage_epochs]}"
 STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
-EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-8}"
+EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-0}"
 EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
 EARLY_STOP_MIN_DELTA="${STEADYSKY_EARLY_STOP_MIN_DELTA:-1e-4}"
 EARLY_STOP_MAX_VALID_LOSS="${STEADYSKY_EARLY_STOP_MAX_VALID_LOSS:-1e6}"
 NPROC_PER_NODE="${STEADYSKY_NPROC_PER_NODE:-1}"
 BATCH_SIZE="${STEADYSKY_BATCH_SIZE:-16}"
+START_STAGE="${STEADYSKY_START_STAGE:-1}"
 
 if ! [[ "${NPROC_PER_NODE}" =~ ^[1-9][0-9]*$ ]]; then
   echo "STEADYSKY_NPROC_PER_NODE must be a positive integer, got: ${NPROC_PER_NODE}" >&2
@@ -26,6 +27,11 @@ fi
 if ! [[ "${BATCH_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
   echo "STEADYSKY_BATCH_SIZE must be a positive integer, got: ${BATCH_SIZE}" >&2
   exit 6
+fi
+
+if ! [[ "${START_STAGE}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "STEADYSKY_START_STAGE must be a positive integer, got: ${START_STAGE}" >&2
+  exit 7
 fi
 
 if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" ]]; then
@@ -53,11 +59,20 @@ if [[ "${#STAGE_EPOCHS[@]}" -ne "${#STAGES[@]}" ]]; then
   exit 4
 fi
 
+if (( START_STAGE > ${#STAGES[@]} )); then
+  echo "STEADYSKY_START_STAGE=${START_STAGE} exceeds number of stages (${#STAGES[@]})" >&2
+  exit 8
+fi
+
 cd "${MAKANI}"
 RUN_DIR="${ROOT}/runs/${CONFIG_NAME}/${RUN_NUM}"
 mkdir -p "${RUN_DIR}/training_checkpoints" "${ROOT}/logs"
 
 for IDX in "${!STAGES[@]}"; do
+  if (( IDX + 1 < START_STAGE )); then
+    continue
+  fi
+
   STAGE="${STAGES[$IDX]}"
   STAGE_EPOCHS_THIS="${STAGE_EPOCHS[$IDX]}"
   TARGET="${DATA}/${STAGE}"
