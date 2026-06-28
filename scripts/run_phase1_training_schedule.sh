@@ -9,7 +9,7 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual [comma_separated_stage_epochs]}"
+ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom [comma_separated_stage_epochs]}"
 STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
 EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-0}"
 EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
@@ -34,8 +34,8 @@ if ! [[ "${START_STAGE}" =~ ^[1-9][0-9]*$ ]]; then
   exit 7
 fi
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" ]]; then
-  echo "ARM must be raw, fourier, mixed, or residual" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" ]]; then
+  echo "ARM must be raw, fourier, mixed, residual, freq_loss, or freq_anom" >&2
   exit 2
 fi
 
@@ -48,9 +48,15 @@ elif [[ "${ARM}" == "fourier" ]]; then
 elif [[ "${ARM}" == "mixed" ]]; then
   STAGES=(train_mixed_lp004_r020 train_mixed_lp008_r030 train_mixed_lp016_r040 train_mixed_lp032_r050 train_mixed_lp064_r065 train_raw)
   RUN_NUM="phase2_mixed_edim384"
-else
+elif [[ "${ARM}" == "residual" ]]; then
   STAGES=(train_residual_lp004_l005 train_residual_lp008_l015 train_residual_lp016_l030 train_residual_lp032_l050 train_residual_lp064_l075 train_raw)
   RUN_NUM="phase2_residual_edim384"
+elif [[ "${ARM}" == "freq_loss" ]]; then
+  STAGES=(train_raw train_raw train_raw train_raw train_raw train_raw)
+  RUN_NUM="phase3_freq_loss_edim384"
+else
+  STAGES=(train_raw train_raw train_raw train_raw train_raw train_raw)
+  RUN_NUM="phase3_freq_anom_edim384"
 fi
 
 EXTERNAL_FOURIER_MARKER="${ROOT}/logs/phase1_fourier_external_run.marker"
@@ -73,6 +79,10 @@ fi
 cd "${MAKANI}"
 RUN_DIR="${ROOT}/runs/${CONFIG_NAME}/${RUN_NUM}"
 mkdir -p "${RUN_DIR}/training_checkpoints" "${ROOT}/logs"
+
+if [[ "${ARM}" == "freq_loss" || "${ARM}" == "freq_anom" ]]; then
+  "${PYTHON}" "${REPO}/scripts/install_makani_phase3_losses.py" --makani-root "${MAKANI}"
+fi
 
 for IDX in "${!STAGES[@]}"; do
   if (( IDX + 1 < START_STAGE )); then
@@ -108,6 +118,56 @@ txt = src.read_text()
 txt = txt.replace("${STEADYSKY_WORK}", root)
 txt = txt.replace(f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_raw"', f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_current_{arm}"')
 txt = txt.replace("max_epochs: 300", f"max_epochs: {stage_end_epoch}")
+if arm in {"freq_loss", "freq_anom"}:
+    # Stage-wise frequency curriculum. Inputs and targets remain raw; only
+    # supervision weights change across the same cumulative epoch boundaries.
+    weights = {
+        1: {"field": 0.15, "low": 1.00, "mid": 0.00, "high": 0.00, "anom": 0.25},
+        2: {"field": 0.20, "low": 1.00, "mid": 0.20, "high": 0.00, "anom": 0.35},
+        3: {"field": 0.30, "low": 1.00, "mid": 0.50, "high": 0.00, "anom": 0.45},
+        4: {"field": 0.45, "low": 1.00, "mid": 0.75, "high": 0.20, "anom": 0.55},
+        5: {"field": 0.70, "low": 1.00, "mid": 1.00, "high": 0.50, "anom": 0.65},
+        6: {"field": 1.00, "low": 1.00, "mid": 1.00, "high": 1.00, "anom": 0.75},
+    }[int(stage_index)]
+    base_loss = f'''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        relative_weight: {weights["field"]}
+        parameters:
+            squared: !!bool True
+    -   type: "fourier2d"
+        channel_weights: "constant"
+        relative_weight: 1.0
+        parameters:
+            low_weight: {weights["low"]}
+            mid_weight: {weights["mid"]}
+            high_weight: {weights["high"]}
+            low_max: 5
+            mid_max: 20
+'''
+    if arm == "freq_anom":
+        base_loss += f'''    -   type: "fourier2d"
+        tendency: !!bool True
+        channel_weights: "constant"
+        relative_weight: {weights["anom"]}
+        parameters:
+            low_weight: {weights["low"]}
+            mid_weight: {weights["mid"]}
+            high_weight: {weights["high"]}
+            low_max: 5
+            mid_max: 20
+'''
+    original = '''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        parameters:
+            squared: !!bool True
+'''
+    if original not in txt:
+        raise RuntimeError("Could not find base loss block to replace")
+    txt = txt.replace(original, base_loss)
 out = Path(root) / "configs" / f"{run_num}_stage{stage_index}.yaml"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(txt)

@@ -140,6 +140,12 @@ Selected 120-month diagnostics:
 
 ![Phase 2 Nino3.4 skill vs smoothing](assets/phase2/fig_phase2_nino34_skill_vs_smoothing.png)
 
+## Phase 3 Direction
+
+Phase 3 moves the curriculum from the data distribution into the loss. The model sees raw inputs and raw targets for every epoch, while supervision shifts from low-frequency Fourier bands toward the full field. A second arm adds a tendency-space Fourier loss to emphasize anomaly-like changes. This keeps the architecture fixed and avoids asking the model to treat low-pass fields as raw physical states.
+
+See `docs/phase3_loss_curriculum_plan.md` for the locked launch plan.
+
 ## Data And Artifacts
 
 This repository stores code, configs, protocols, and lightweight metadata only. It does not store source NetCDF files, generated HDF5 datasets, checkpoints, or rollout outputs.

@@ -8,15 +8,15 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG_SOURCE="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_long_rollout_eval.sh raw|fourier|mixed|residual [rollout_months]}"
+ARM="${1:?usage: run_phase1_long_rollout_eval.sh raw|fourier|mixed|residual|freq_loss|freq_anom [rollout_months]}"
 ROLLOUT_MONTHS="${2:-120}"
 NPROC_PER_NODE="${STEADYSKY_EVAL_NPROC_PER_NODE:-1}"
 BATCH_SIZE="${STEADYSKY_EVAL_BATCH_SIZE:-1}"
 DATE_STEP_HOURS="${STEADYSKY_EVAL_DATE_STEP_HOURS:-8760}"
 OUTPUT_MEMORY_BUFFER_SIZE="${STEADYSKY_EVAL_OUTPUT_MEMORY_BUFFER_SIZE:-0}"
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" ]]; then
-  echo "ARM must be raw, fourier, mixed, or residual" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" ]]; then
+  echo "ARM must be raw, fourier, mixed, residual, freq_loss, or freq_anom" >&2
   exit 2
 fi
 
@@ -42,8 +42,10 @@ fi
 
 if [[ "${ARM}" == "raw" || "${ARM}" == "fourier" ]]; then
   RUN_NUM="phase1_${ARM}_edim384"
-else
+elif [[ "${ARM}" == "mixed" || "${ARM}" == "residual" ]]; then
   RUN_NUM="phase2_${ARM}_edim384"
+else
+  RUN_NUM="phase3_${ARM}_edim384"
 fi
 CONFIG="${ROOT}/configs/${RUN_NUM}_eval_rollout${ROLLOUT_MONTHS}.yaml"
 LOG="${ROOT}/logs/${RUN_NUM}_eval_rollout${ROLLOUT_MONTHS}.log"
