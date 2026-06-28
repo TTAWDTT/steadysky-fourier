@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Phase-2 curriculum variants against Phase-1 baselines.
+"""Compare Phase-2/Phase-3 curriculum variants against Phase-1 baselines.
 
 The diagnostics are deliberately focused on the central question raised after
 Phase 1: do curriculum variants improve long-rollout skill without merely
@@ -24,7 +24,7 @@ import numpy as np
 
 
 CHANNELS = ["tauu", "tauv", "tos", "zos"]
-MODEL_METHODS = ["raw", "fourier", "mixed", "residual"]
+MODEL_METHODS = ["raw", "fourier", "mixed", "residual", "freq_loss", "freq_anom"]
 REFERENCE_METHODS = ["persistence", "climatology"]
 ALL_METHODS = MODEL_METHODS + REFERENCE_METHODS
 SKILL_METHODS = MODEL_METHODS + ["persistence"]
@@ -34,6 +34,8 @@ COLORS = {
     "fourier": "#D1495B",
     "mixed": "#0077B6",
     "residual": "#7A4CC2",
+    "freq_loss": "#F4A261",
+    "freq_anom": "#118AB2",
     "persistence": "#2A9D8F",
     "climatology": "#E9C46A",
     "truth": "#264653",
@@ -43,6 +45,8 @@ LABELS = {
     "fourier": "Pure Fourier",
     "mixed": "Mixed",
     "residual": "Residual",
+    "freq_loss": "Freq loss",
+    "freq_anom": "Freq+anom",
     "persistence": "Persistence",
     "climatology": "Climatology",
     "truth": "Truth",
@@ -172,6 +176,8 @@ def _forecast_paths(run_root: Path, rollout_months: int) -> List[MethodSpec]:
         MethodSpec("fourier", run_root / "phase1_fourier_edim384" / "scores" / f"phase1_fourier_rollout{rollout_months}_forecasts.h5"),
         MethodSpec("mixed", run_root / "phase2_mixed_edim384" / "scores" / f"phase2_mixed_edim384_rollout{rollout_months}_forecasts.h5"),
         MethodSpec("residual", run_root / "phase2_residual_edim384" / "scores" / f"phase2_residual_edim384_rollout{rollout_months}_forecasts.h5"),
+        MethodSpec("freq_loss", run_root / "phase3_freq_loss_edim384" / "scores" / f"phase3_freq_loss_edim384_rollout{rollout_months}_forecasts.h5"),
+        MethodSpec("freq_anom", run_root / "phase3_freq_anom_edim384" / "scores" / f"phase3_freq_anom_edim384_rollout{rollout_months}_forecasts.h5"),
     ]
 
 
@@ -288,15 +294,16 @@ def _plot_summary_bars(out: Path, metrics: Dict[str, np.ndarray], nino: Dict[str
     x = np.arange(len(leads))
     width = 0.16
 
-    fig, axes = plt.subplots(1, 3, figsize=(10.4, 3.2), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=(11.2, 3.4), constrained_layout=True)
     panels = [
         ("tos RMSE", {m: metrics[f"rmse_{m}"][leads, 2] for m in MODEL_METHODS}),
         ("tos ACC", {m: metrics[f"acc_{m}"][leads, 2] for m in MODEL_METHODS}),
         ("Nino3.4 amplitude", {m: nino[f"amp_ratio_{m}"][leads] for m in MODEL_METHODS}),
     ]
     for ax, (title, values) in zip(axes, panels):
+        offsets = np.linspace(-0.36, 0.36, len(MODEL_METHODS))
         for i, method in enumerate(MODEL_METHODS):
-            ax.bar(x + (i - 1.5) * width, values[method], width=width, color=COLORS[method], label=LABELS[method])
+            ax.bar(x + offsets[i], values[method], width=0.12, color=COLORS[method], label=LABELS[method])
         ax.set_xticks(x, labels)
         ax.set_title(title)
         ax.set_xlabel("Lead")
