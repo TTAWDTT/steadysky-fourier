@@ -121,6 +121,25 @@ The Fourier curriculum reduces some long-horizon RMSE values relative to the raw
 
 The current takeaway is modest: **Fourier layerwise training appears to change long-rollout error geometry, but the first run does not yet demonstrate strong long-range predictive skill.**
 
+## Phase 2 Variants
+
+Phase 2 keeps the same SFNO architecture, loss, optimizer, split, batch size, 150-epoch budget, and 120-month rollout evaluation. It adds two data-injection variants designed to test whether the Phase 1 smoothing effect can be reduced.
+
+| Arm | Data schedule | Purpose |
+|---|---|---|
+| Mixed | low-pass field plus a growing raw residual fraction | keep raw variability visible throughout training |
+| Residual | lower early raw fraction, then stronger residual restoration | test a stronger low-frequency skeleton before returning detail |
+
+The result is mixed in the scientifically useful sense. The residual variant improves some tos pattern-ACC values relative to raw and pure Fourier, while the mixed variant restores more Nino3.4 anomaly amplitude at long lead. But neither variant cleanly beats simple persistence or climatology in long-range tos RMSE, and Nino3.4 phase skill is still weak. This means Phase 2 is evidence about the tradeoff, not a solved long-range forecasting result.
+
+Selected 120-month diagnostics:
+
+![Phase 2 key lead summary](assets/phase2/fig_phase2_key_lead_summary.png)
+
+![Phase 2 RMSE and ACC](assets/phase2/fig_phase2_skill_rmse_acc.png)
+
+![Phase 2 Nino3.4 skill vs smoothing](assets/phase2/fig_phase2_nino34_skill_vs_smoothing.png)
+
 ## Data And Artifacts
 
 This repository stores code, configs, protocols, and lightweight metadata only. It does not store source NetCDF files, generated HDF5 datasets, checkpoints, or rollout outputs.
