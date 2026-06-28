@@ -140,11 +140,19 @@ Selected 120-month diagnostics:
 
 ![Phase 2 Nino3.4 skill vs smoothing](assets/phase2/fig_phase2_nino34_skill_vs_smoothing.png)
 
-## Phase 3 Direction
+## Phase 3 Results
 
 Phase 3 moves the curriculum from the data distribution into the loss. The model sees raw inputs and raw targets for every epoch, while supervision shifts from low-frequency Fourier bands toward the full field. A second arm adds a tendency-space Fourier loss to emphasize anomaly-like changes. This keeps the architecture fixed and avoids asking the model to treat low-pass fields as raw physical states.
 
-See `docs/phase3_loss_curriculum_plan.md` for the locked launch plan.
+This turned out to be a useful negative result. The Phase 3 arms recover more Nino3.4 anomaly amplitude in some horizons, but they worsen RMSE and long-lead pattern correlation. At 120 months, both Phase 3 arms have negative tos ACC and worse tos RMSE than the raw baseline.
+
+![Phase 3 key lead summary](assets/phase3/fig_phase2_key_lead_summary.png)
+
+![Phase 3 RMSE and ACC](assets/phase3/fig_phase2_skill_rmse_acc.png)
+
+![Phase 3 Nino3.4 skill vs smoothing](assets/phase3/fig_phase2_nino34_skill_vs_smoothing.png)
+
+See `docs/phase3_loss_curriculum_results.md` for the full table.
 
 ## Data And Artifacts
 
