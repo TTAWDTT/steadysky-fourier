@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Phase-2/Phase-3 curriculum variants against Phase-1 baselines.
+"""Compare curriculum variants against Phase-1 baselines.
 
 The diagnostics are deliberately focused on the central question raised after
 Phase 1: do curriculum variants improve long-rollout skill without merely
@@ -24,7 +24,16 @@ import numpy as np
 
 
 CHANNELS = ["tauu", "tauv", "tos", "zos"]
-MODEL_METHODS = ["raw", "fourier", "mixed", "residual", "freq_loss", "freq_anom"]
+MODEL_METHODS = [
+    "raw",
+    "fourier",
+    "mixed",
+    "residual",
+    "freq_loss",
+    "freq_anom",
+    "residual_soft",
+    "residual_rollout",
+]
 REFERENCE_METHODS = ["persistence", "climatology"]
 ALL_METHODS = MODEL_METHODS + REFERENCE_METHODS
 SKILL_METHODS = MODEL_METHODS + ["persistence"]
@@ -36,6 +45,8 @@ COLORS = {
     "residual": "#7A4CC2",
     "freq_loss": "#F4A261",
     "freq_anom": "#118AB2",
+    "residual_soft": "#8E7CC3",
+    "residual_rollout": "#06A77D",
     "persistence": "#2A9D8F",
     "climatology": "#E9C46A",
     "truth": "#264653",
@@ -47,6 +58,8 @@ LABELS = {
     "residual": "Residual",
     "freq_loss": "Freq loss",
     "freq_anom": "Freq+anom",
+    "residual_soft": "Soft residual",
+    "residual_rollout": "Residual+rollout",
     "persistence": "Persistence",
     "climatology": "Climatology",
     "truth": "Truth",
@@ -178,6 +191,8 @@ def _forecast_paths(run_root: Path, rollout_months: int) -> List[MethodSpec]:
         MethodSpec("residual", run_root / "phase2_residual_edim384" / "scores" / f"phase2_residual_edim384_rollout{rollout_months}_forecasts.h5"),
         MethodSpec("freq_loss", run_root / "phase3_freq_loss_edim384" / "scores" / f"phase3_freq_loss_edim384_rollout{rollout_months}_forecasts.h5"),
         MethodSpec("freq_anom", run_root / "phase3_freq_anom_edim384" / "scores" / f"phase3_freq_anom_edim384_rollout{rollout_months}_forecasts.h5"),
+        MethodSpec("residual_soft", run_root / "phase4_residual_soft_edim384" / "scores" / f"phase4_residual_soft_edim384_rollout{rollout_months}_forecasts.h5"),
+        MethodSpec("residual_rollout", run_root / "phase4_residual_rollout_edim384" / "scores" / f"phase4_residual_rollout_edim384_rollout{rollout_months}_forecasts.h5"),
     ]
 
 
@@ -185,7 +200,7 @@ def _read_forecasts(paths: Dict[str, h5py.File], slots: np.ndarray, lead: int) -
     return {name: hf["fields"][slots, lead, 0, :, :, :].astype(np.float32) for name, hf in paths.items()}
 
 
-def _plot_rmse_acc(out: Path, leads: np.ndarray, metrics: Dict[str, np.ndarray]) -> None:
+def _plot_rmse_acc(out: Path, leads: np.ndarray, metrics: Dict[str, np.ndarray], figure_prefix: str) -> None:
     fig, axes = plt.subplots(2, 4, figsize=(11.2, 4.9), constrained_layout=True)
     for ci, channel in enumerate(CHANNELS):
         ax = axes[0, ci]
@@ -206,10 +221,10 @@ def _plot_rmse_acc(out: Path, leads: np.ndarray, metrics: Dict[str, np.ndarray])
             ax.set_ylabel("ACC")
     axes[0, -1].legend(loc="best")
     axes[1, -1].legend(loc="best")
-    _save(fig, out / "fig_phase2_skill_rmse_acc")
+    _save(fig, out / f"{figure_prefix}_skill_rmse_acc")
 
 
-def _plot_smoothing(out: Path, leads: np.ndarray, metrics: Dict[str, np.ndarray]) -> None:
+def _plot_smoothing(out: Path, leads: np.ndarray, metrics: Dict[str, np.ndarray], figure_prefix: str) -> None:
     fig, axes = plt.subplots(2, 4, figsize=(11.2, 4.9), constrained_layout=True)
     for ci, channel in enumerate(CHANNELS):
         ax = axes[0, ci]
@@ -231,10 +246,10 @@ def _plot_smoothing(out: Path, leads: np.ndarray, metrics: Dict[str, np.ndarray]
             ax.set_ylabel("Predicted / truth")
     axes[0, -1].legend(loc="best")
     axes[1, -1].legend(loc="best")
-    _save(fig, out / "fig_phase2_smoothing_amplitude_variance")
+    _save(fig, out / f"{figure_prefix}_smoothing_amplitude_variance")
 
 
-def _plot_spectrum(out: Path, leads: np.ndarray, spectrum: Dict[str, np.ndarray]) -> None:
+def _plot_spectrum(out: Path, leads: np.ndarray, spectrum: Dict[str, np.ndarray], figure_prefix: str) -> None:
     fig, axes = plt.subplots(3, 4, figsize=(11.2, 7.1), constrained_layout=True)
     for ri, band in enumerate(BANDS):
         for ci, channel in enumerate(CHANNELS):
@@ -247,10 +262,10 @@ def _plot_spectrum(out: Path, leads: np.ndarray, spectrum: Dict[str, np.ndarray]
             if ci == 0:
                 ax.set_ylabel("Predicted / truth")
     axes[0, -1].legend(loc="best")
-    _save(fig, out / "fig_phase2_spectral_energy_ratios")
+    _save(fig, out / f"{figure_prefix}_spectral_energy_ratios")
 
 
-def _plot_nino(out: Path, leads: np.ndarray, nino: Dict[str, np.ndarray]) -> None:
+def _plot_nino(out: Path, leads: np.ndarray, nino: Dict[str, np.ndarray], figure_prefix: str) -> None:
     fig, axes = plt.subplots(2, 2, figsize=(8.9, 5.5), constrained_layout=True)
     ax = axes[0, 0]
     for method in ALL_METHODS:
@@ -285,14 +300,21 @@ def _plot_nino(out: Path, leads: np.ndarray, nino: Dict[str, np.ndarray]) -> Non
     ax.set_xlabel("Lead months")
     ax.set_ylabel("Anomaly")
     ax.legend(loc="best", ncol=2)
-    _save(fig, out / "fig_phase2_nino34_skill_vs_smoothing")
+    _save(fig, out / f"{figure_prefix}_nino34_skill_vs_smoothing")
 
 
-def _plot_summary_bars(out: Path, metrics: Dict[str, np.ndarray], nino: Dict[str, np.ndarray], rollout_months: int) -> None:
+def _plot_summary_bars(
+    out: Path,
+    metrics: Dict[str, np.ndarray],
+    nino: Dict[str, np.ndarray],
+    rollout_months: int,
+    figure_prefix: str,
+) -> None:
     leads = [12, 60, rollout_months]
     labels = [f"{lead}m" for lead in leads]
     x = np.arange(len(leads))
-    width = 0.16
+    offsets = np.linspace(-0.42, 0.42, len(MODEL_METHODS))
+    width = min(0.1, 0.72 / max(len(MODEL_METHODS), 1))
 
     fig, axes = plt.subplots(1, 3, figsize=(11.2, 3.4), constrained_layout=True)
     panels = [
@@ -301,23 +323,22 @@ def _plot_summary_bars(out: Path, metrics: Dict[str, np.ndarray], nino: Dict[str
         ("Nino3.4 amplitude", {m: nino[f"amp_ratio_{m}"][leads] for m in MODEL_METHODS}),
     ]
     for ax, (title, values) in zip(axes, panels):
-        offsets = np.linspace(-0.36, 0.36, len(MODEL_METHODS))
         for i, method in enumerate(MODEL_METHODS):
-            ax.bar(x + offsets[i], values[method], width=0.12, color=COLORS[method], label=LABELS[method])
+            ax.bar(x + offsets[i], values[method], width=width, color=COLORS[method], label=LABELS[method])
         ax.set_xticks(x, labels)
         ax.set_title(title)
         ax.set_xlabel("Lead")
         if "amplitude" in title:
             ax.axhline(1.0, color="#333333", linewidth=0.8, alpha=0.4)
     axes[-1].legend(loc="best")
-    _save(fig, out / "fig_phase2_key_lead_summary")
+    _save(fig, out / f"{figure_prefix}_key_lead_summary")
 
 
-def _copy_key_pngs(out: Path, asset_dir: Path | None) -> None:
+def _copy_key_pngs(out: Path, asset_dir: Path | None, figure_prefix: str) -> None:
     if asset_dir is None:
         return
     asset_dir.mkdir(parents=True, exist_ok=True)
-    for png in sorted(out.glob("fig_phase2_*.png")):
+    for png in sorted(out.glob(f"{figure_prefix}_*.png")):
         target = asset_dir / png.name
         target.write_bytes(png.read_bytes())
 
@@ -328,6 +349,8 @@ def main() -> None:
     parser.add_argument("--rollout-months", type=int, default=120)
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--asset-dir", type=Path, default=None)
+    parser.add_argument("--figure-prefix", default="fig_phase2")
+    parser.add_argument("--summary-stem", default="phase2_curriculum_comparison")
     args = parser.parse_args()
 
     _style()
@@ -421,12 +444,12 @@ def main() -> None:
         for hf in h5s.values():
             hf.close()
 
-    _plot_rmse_acc(out, leads, metrics)
-    _plot_smoothing(out, leads, metrics)
-    _plot_spectrum(out, leads, spectrum)
-    _plot_nino(out, leads, nino)
-    _plot_summary_bars(out, metrics, nino, args.rollout_months)
-    _copy_key_pngs(out, args.asset_dir)
+    _plot_rmse_acc(out, leads, metrics, args.figure_prefix)
+    _plot_smoothing(out, leads, metrics, args.figure_prefix)
+    _plot_spectrum(out, leads, spectrum, args.figure_prefix)
+    _plot_nino(out, leads, nino, args.figure_prefix)
+    _plot_summary_bars(out, metrics, nino, args.rollout_months, args.figure_prefix)
+    _copy_key_pngs(out, args.asset_dir, args.figure_prefix)
 
     summary = {
         "valid_rollout_slots": slots.astype(int).tolist(),
@@ -440,9 +463,9 @@ def main() -> None:
         "nino34": {k: v.tolist() for k, v in nino.items()},
         "nino34_region": {"lat": [-5.0, 5.0], "lon": [190.0, 240.0], "variable": "tos"},
     }
-    (out / "phase2_curriculum_comparison.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (out / f"{args.summary_stem}.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     np.savez_compressed(
-        out / "phase2_curriculum_comparison.npz",
+        out / f"{args.summary_stem}.npz",
         leads=leads,
         **metrics,
         **{f"spectrum_{k}": v for k, v in spectrum.items()},

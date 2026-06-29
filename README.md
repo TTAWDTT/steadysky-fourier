@@ -154,11 +154,21 @@ This turned out to be a useful negative result. The Phase 3 arms recover more Ni
 
 See `docs/phase3_loss_curriculum_results.md` for the full table.
 
-## Phase 4 Plan
+## Phase 4 Results
 
-Phase 4 returns to the more promising residual-curriculum direction. It tests a softer residual schedule and a second arm with short rollout training in later stages, aiming to improve phase stability without repeating Phase 3's amplitude-only failure mode.
+Phase 4 returns to the residual-curriculum direction and tests two arms: a softer residual schedule, and the same schedule with short rollout training in the later stages.
 
-See `docs/phase4_residual_rollout_plan.md` for the locked plan.
+The result is clarifying rather than triumphant. The soft residual arm does not help. The residual+rollout arm is much more stable and sharply lowers long-lead tos RMSE relative to the raw baseline, but it does so with strong anomaly damping: at 120 months, tos amplitude is only about 35% of the truth and pattern ACC remains weak. It also still does not beat persistence on tos RMSE or tos ACC.
+
+Selected 120-month diagnostics:
+
+![Phase 4 key lead summary](assets/phase4/fig_phase4_key_lead_summary.png)
+
+![Phase 4 RMSE and ACC](assets/phase4/fig_phase4_skill_rmse_acc.png)
+
+![Phase 4 Nino3.4 skill vs smoothing](assets/phase4/fig_phase4_nino34_skill_vs_smoothing.png)
+
+See `docs/phase4_residual_rollout_results.md` for the full table and interpretation.
 
 ## Data And Artifacts
 
