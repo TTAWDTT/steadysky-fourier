@@ -154,6 +154,12 @@ This turned out to be a useful negative result. The Phase 3 arms recover more Ni
 
 See `docs/phase3_loss_curriculum_results.md` for the full table.
 
+## Phase 4 Plan
+
+Phase 4 returns to the more promising residual-curriculum direction. It tests a softer residual schedule and a second arm with short rollout training in later stages, aiming to improve phase stability without repeating Phase 3's amplitude-only failure mode.
+
+See `docs/phase4_residual_rollout_plan.md` for the locked plan.
+
 ## Data And Artifacts
 
 This repository stores code, configs, protocols, and lightweight metadata only. It does not store source NetCDF files, generated HDF5 datasets, checkpoints, or rollout outputs.

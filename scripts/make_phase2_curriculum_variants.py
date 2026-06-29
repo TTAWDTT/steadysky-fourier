@@ -44,6 +44,14 @@ RESIDUAL_STAGES: List[Tuple[int, float, str]] = [
     (64, 0.75, "train_residual_lp064_l075"),
 ]
 
+SOFT_RESIDUAL_STAGES: List[Tuple[int, float, str]] = [
+    (4, 0.20, "train_residual_soft_lp004_l020"),
+    (8, 0.30, "train_residual_soft_lp008_l030"),
+    (16, 0.45, "train_residual_soft_lp016_l045"),
+    (32, 0.60, "train_residual_soft_lp032_l060"),
+    (64, 0.80, "train_residual_soft_lp064_l080"),
+]
+
 
 def copy_coords_and_scales(src: h5py.File, dst: h5py.File, fields: h5py.Dataset) -> None:
     timestamp = dst.create_dataset("timestamp", data=src["timestamp"][:])
@@ -64,7 +72,7 @@ def copy_coords_and_scales(src: h5py.File, dst: h5py.File, fields: h5py.Dataset)
 
 
 def _stage_sets(kind: str) -> Dict[str, List[Tuple[int, float, str]]]:
-    all_sets = {"mixed": MIXED_STAGES, "residual": RESIDUAL_STAGES}
+    all_sets = {"mixed": MIXED_STAGES, "residual": RESIDUAL_STAGES, "residual_soft": SOFT_RESIDUAL_STAGES}
     if kind == "all":
         return all_sets
     return {kind: all_sets[kind]}
@@ -127,7 +135,7 @@ def _write_stage(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset-root", required=True, type=Path)
-    parser.add_argument("--kind", default="all", choices=["all", "mixed", "residual"])
+    parser.add_argument("--kind", default="all", choices=["all", "mixed", "residual", "residual_soft"])
     parser.add_argument("--compression", default="gzip", choices=["gzip", "lzf", "none"])
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()

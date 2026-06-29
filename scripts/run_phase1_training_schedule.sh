@@ -9,7 +9,7 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom [comma_separated_stage_epochs]}"
+ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout [comma_separated_stage_epochs]}"
 STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
 EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-0}"
 EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
@@ -34,8 +34,8 @@ if ! [[ "${START_STAGE}" =~ ^[1-9][0-9]*$ ]]; then
   exit 7
 fi
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" ]]; then
-  echo "ARM must be raw, fourier, mixed, residual, freq_loss, or freq_anom" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" ]]; then
+  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, or residual_rollout" >&2
   exit 2
 fi
 
@@ -54,9 +54,23 @@ elif [[ "${ARM}" == "residual" ]]; then
 elif [[ "${ARM}" == "freq_loss" ]]; then
   STAGES=(train_raw train_raw train_raw train_raw train_raw train_raw)
   RUN_NUM="phase3_freq_loss_edim384"
-else
+elif [[ "${ARM}" == "freq_anom" ]]; then
   STAGES=(train_raw train_raw train_raw train_raw train_raw train_raw)
   RUN_NUM="phase3_freq_anom_edim384"
+elif [[ "${ARM}" == "residual_soft" ]]; then
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase4_residual_soft_edim384"
+else
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase4_residual_rollout_edim384"
+fi
+
+if [[ "${ARM}" == "residual_rollout" ]]; then
+  MULTISTEP_COUNTS=(1 1 1 3 6 12)
+  STAGE_BATCH_SIZES=(16 16 16 8 4 2)
+else
+  MULTISTEP_COUNTS=(1 1 1 1 1 1)
+  STAGE_BATCH_SIZES=("${BATCH_SIZE}" "${BATCH_SIZE}" "${BATCH_SIZE}" "${BATCH_SIZE}" "${BATCH_SIZE}" "${BATCH_SIZE}")
 fi
 
 EXTERNAL_FOURIER_MARKER="${ROOT}/logs/phase1_fourier_external_run.marker"
@@ -102,10 +116,14 @@ for IDX in "${!STAGES[@]}"; do
   for J in $(seq 0 "${IDX}"); do
     STAGE_END_EPOCH=$(( STAGE_END_EPOCH + STAGE_EPOCHS[$J] ))
   done
+  MULTISTEP_COUNT="${MULTISTEP_COUNTS[$IDX]}"
+  STAGE_BATCH_SIZE="${STAGE_BATCH_SIZES[$IDX]}"
+  N_FUTURE=$((MULTISTEP_COUNT - 1))
+  TRAIN_SAMPLES_PER_EPOCH=$((1583 - N_FUTURE))
   LOG="${ROOT}/logs/${RUN_NUM}_stage$((IDX + 1))_${STAGE}.log"
-  echo "[$(date -Is)] ARM=${ARM} stage=$((IDX + 1))/${#STAGES[@]} data=${STAGE} stage_epochs=${STAGE_EPOCHS_THIS} max_epochs=${STAGE_END_EPOCH} nproc_per_node=${NPROC_PER_NODE} batch_size=${BATCH_SIZE}" | tee -a "${LOG}"
+  echo "[$(date -Is)] ARM=${ARM} stage=$((IDX + 1))/${#STAGES[@]} data=${STAGE} stage_epochs=${STAGE_EPOCHS_THIS} max_epochs=${STAGE_END_EPOCH} nproc_per_node=${NPROC_PER_NODE} batch_size=${STAGE_BATCH_SIZE} multistep_count=${MULTISTEP_COUNT}" | tee -a "${LOG}"
 
-  STAGE_INDEX=$((IDX + 1)) ROOT="${ROOT}" CONFIG="${CONFIG}" ARM="${ARM}" RUN_NUM="${RUN_NUM}" STAGE_END_EPOCH="${STAGE_END_EPOCH}" python - <<'PY'
+  STAGE_INDEX=$((IDX + 1)) ROOT="${ROOT}" CONFIG="${CONFIG}" ARM="${ARM}" RUN_NUM="${RUN_NUM}" STAGE_END_EPOCH="${STAGE_END_EPOCH}" TRAIN_SAMPLES_PER_EPOCH="${TRAIN_SAMPLES_PER_EPOCH}" python - <<'PY'
 import os
 from pathlib import Path
 root = os.environ["ROOT"]
@@ -114,10 +132,14 @@ arm = os.environ["ARM"]
 run_num = os.environ["RUN_NUM"]
 stage_index = os.environ["STAGE_INDEX"]
 stage_end_epoch = os.environ["STAGE_END_EPOCH"]
+train_samples_per_epoch = os.environ["TRAIN_SAMPLES_PER_EPOCH"]
 txt = src.read_text()
 txt = txt.replace("${STEADYSKY_WORK}", root)
 txt = txt.replace(f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_raw"', f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_current_{arm}"')
 txt = txt.replace("max_epochs: 300", f"max_epochs: {stage_end_epoch}")
+txt = txt.replace("n_train_samples_per_epoch: 1583", f"n_train_samples_per_epoch: {train_samples_per_epoch}")
+if arm == "residual_rollout":
+    txt = txt.replace('    pretrained: !!bool False', '    pretrained: !!bool False\n    load_loss: !!bool False')
 if arm in {"freq_loss", "freq_anom"}:
     # Stage-wise frequency curriculum. Inputs and targets remain raw; only
     # supervision weights change across the same cumulative epoch boundaries.
@@ -174,17 +196,22 @@ out.write_text(txt)
 print(out)
 PY
 
-  "${PYTHON}" -m torch.distributed.run --standalone --nproc_per_node="${NPROC_PER_NODE}" -m makani.train \
-    --yaml_config="${ROOT}/configs/${RUN_NUM}_stage$((IDX + 1)).yaml" \
-    --config="${CONFIG_NAME}" \
-    --run_num="${RUN_NUM}" \
-    --amp_mode=bf16 \
-    --batch_size="${BATCH_SIZE}" \
-    --h_parallel_size=1 \
-    --w_parallel_size=1 \
-    --matmul_parallel_size=1 \
-    --multistep_count=1 \
-    2>&1 | tee -a "${LOG}"
+  TRAIN_CMD=(
+    "${PYTHON}" -m torch.distributed.run --standalone --nproc_per_node="${NPROC_PER_NODE}" -m makani.train
+    --yaml_config="${ROOT}/configs/${RUN_NUM}_stage$((IDX + 1)).yaml"
+    --config="${CONFIG_NAME}"
+    --run_num="${RUN_NUM}"
+    --amp_mode=bf16
+    --batch_size="${STAGE_BATCH_SIZE}"
+    --h_parallel_size=1
+    --w_parallel_size=1
+    --matmul_parallel_size=1
+    --multistep_count="${MULTISTEP_COUNT}"
+  )
+  if [[ "${MULTISTEP_COUNT}" -gt 1 ]]; then
+    TRAIN_CMD+=(--multistep_checkpoint)
+  fi
+  "${TRAIN_CMD[@]}" 2>&1 | tee -a "${LOG}"
 
   "${PYTHON}" "${REPO}/scripts/check_training_log.py" "${ROOT}"/logs/"${RUN_NUM}"_stage*.log \
     --patience "${EARLY_STOP_PATIENCE}" \
