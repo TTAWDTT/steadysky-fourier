@@ -92,8 +92,10 @@ class FourierBandLpLoss(GeometricBaseLoss):
         if wgt is not None:
             diff = diff * wgt
 
+        fft_dtype = torch.float32 if diff.dtype in (torch.float16, torch.bfloat16) else diff.dtype
+        diff = diff.to(dtype=fft_dtype)
         height, width = diff.shape[-2:]
-        weight = self._band_weight(height, width, diff.device, diff.dtype)
+        weight = self._band_weight(height, width, diff.device, fft_dtype)
         coeff = torch.fft.rfft2(diff, dim=(-2, -1), norm="ortho")
         power = coeff.real.square() + coeff.imag.square()
         weighted_power = power * weight[None, None, :, :]
@@ -169,13 +171,15 @@ class SpectralEnergyMatchLoss(GeometricBaseLoss):
     def _log_band_energy(self, x: torch.Tensor) -> torch.Tensor:
         if self.remove_spatial_mean:
             x = x - x.mean(dim=(-2, -1), keepdim=True)
+        fft_dtype = torch.float32 if x.dtype in (torch.float16, torch.bfloat16) else x.dtype
+        x = x.to(dtype=fft_dtype)
         height, width = x.shape[-2:]
-        masks, weights = self._bands(height, width, x.device, x.dtype)
+        masks, weights = self._bands(height, width, x.device, fft_dtype)
         coeff = torch.fft.rfft2(x, dim=(-2, -1), norm="ortho")
         power = coeff.real.square() + coeff.imag.square()
         energies = []
         for mask in masks:
-            denom = torch.clamp(mask.sum().to(dtype=x.dtype), min=1.0)
+            denom = torch.clamp(mask.sum().to(dtype=fft_dtype), min=1.0)
             energies.append((power * mask[None, None]).sum(dim=(-2, -1)) / denom)
         return torch.log(torch.stack(energies, dim=-1) + self.eps), weights
 
