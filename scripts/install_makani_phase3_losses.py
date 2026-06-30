@@ -189,6 +189,78 @@ class SpectralEnergyMatchLoss(GeometricBaseLoss):
             channel_weight = wgt.mean(dim=(-2, -1))
             loss = loss * channel_weight
         return loss
+
+
+class AttractorStatsLoss(GeometricBaseLoss):
+    """Match coarse attractor statistics without matching spatial phase.
+
+    This loss is intentionally weaker than pointwise rollout loss. It compares
+    per-field spatial mean, variance, and adjacent-channel covariance. The goal
+    is to make the collapsed low-energy attractor expensive while avoiding the
+    Phase-3 failure mode of prescribing exact Fourier phase.
+    """
+
+    def __init__(
+        self,
+        img_shape: Tuple[int, int],
+        crop_shape: Tuple[int, int],
+        crop_offset: Tuple[int, int],
+        channel_names: List[str],
+        grid_type: str,
+        mean_weight: float = 1.0,
+        variance_weight: float = 1.0,
+        covariance_weight: float = 0.25,
+        use_log_variance: bool = True,
+        spatial_distributed: Optional[bool] = False,
+        eps: float = 1.0e-8,
+        **kwargs,
+    ):
+        super().__init__(
+            img_shape=img_shape,
+            crop_shape=crop_shape,
+            crop_offset=crop_offset,
+            channel_names=channel_names,
+            grid_type=grid_type,
+            spatial_distributed=spatial_distributed,
+        )
+        self.mean_weight = float(mean_weight)
+        self.variance_weight = float(variance_weight)
+        self.covariance_weight = float(covariance_weight)
+        self.use_log_variance = bool(use_log_variance)
+        self.eps = float(eps)
+
+    def _stats(self, x: torch.Tensor):
+        mean = x.mean(dim=(-2, -1))
+        centered = x - mean[..., None, None]
+        var = centered.square().mean(dim=(-2, -1))
+        if x.shape[1] > 1:
+            cov = (centered[:, :-1] * centered[:, 1:]).mean(dim=(-2, -1))
+        else:
+            cov = None
+        return mean, var, cov
+
+    def forward(self, prd: torch.Tensor, tar: torch.Tensor, wgt: Optional[torch.Tensor] = None, **kwargs) -> torch.Tensor:
+        pred_mean, pred_var, pred_cov = self._stats(prd)
+        targ_mean, targ_var, targ_cov = self._stats(tar)
+
+        mean_loss = (pred_mean - targ_mean).square()
+        if self.use_log_variance:
+            var_loss = (torch.log(pred_var + self.eps) - torch.log(targ_var + self.eps)).square()
+        else:
+            var_loss = (pred_var - targ_var).square() / (targ_var.detach() + self.eps)
+        loss = self.mean_weight * mean_loss + self.variance_weight * var_loss
+
+        if pred_cov is not None and targ_cov is not None and self.covariance_weight > 0:
+            cov_loss = (pred_cov - targ_cov).square() / (targ_var[:, :-1].detach() * targ_var[:, 1:].detach() + self.eps).sqrt()
+            cov_pad = torch.zeros_like(loss)
+            cov_pad[:, :-1] = cov_pad[:, :-1] + 0.5 * cov_loss
+            cov_pad[:, 1:] = cov_pad[:, 1:] + 0.5 * cov_loss
+            loss = loss + self.covariance_weight * cov_pad
+
+        if wgt is not None:
+            channel_weight = wgt.mean(dim=(-2, -1))
+            loss = loss * channel_weight
+        return loss
 '''
 
 
@@ -208,6 +280,8 @@ def install(makani_root: Path) -> None:
         extra_imports.append("FourierBandLpLoss")
     if "SpectralEnergyMatchLoss" not in registry_text:
         extra_imports.append("SpectralEnergyMatchLoss")
+    if "AttractorStatsLoss" not in registry_text:
+        extra_imports.append("AttractorStatsLoss")
     if extra_imports:
         registry_text = registry_text.replace(marker, marker + f"from .losses import {', '.join(extra_imports)}\n")
 
@@ -219,6 +293,8 @@ def install(makani_root: Path) -> None:
             map_insert,
             map_insert + '    "spectral_energy_match": SpectralEnergyMatchLoss,\n',
         )
+    if '"attractor_stats": AttractorStatsLoss' not in registry_text:
+        registry_text = registry_text.replace(map_insert, map_insert + '    "attractor_stats": AttractorStatsLoss,\n')
     registry.write_text(registry_text, encoding="utf-8")
 
     init_text = init_file.read_text(encoding="utf-8")
@@ -227,6 +303,10 @@ def install(makani_root: Path) -> None:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
     init_text = init_file.read_text(encoding="utf-8")
     init_line = "from .steadysky_fourier_loss import SpectralEnergyMatchLoss\n"
+    if init_line not in init_text:
+        init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
+    init_text = init_file.read_text(encoding="utf-8")
+    init_line = "from .steadysky_fourier_loss import AttractorStatsLoss\n"
     if init_line not in init_text:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
 
