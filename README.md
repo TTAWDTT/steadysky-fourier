@@ -170,6 +170,16 @@ Selected 120-month diagnostics:
 
 See `docs/phase4_residual_rollout_results.md` for the full table and interpretation.
 
+## Phase 5 Plan
+
+Phase 5 keeps Phase 4's stabilizing residual+rollout recipe and adds a small
+rollout-stage constraint against anomaly collapse. Two arms are launched:
+energy-preserving rollout and spectrum-preserving rollout. The goal is to test
+whether the Phase 4 RMSE gain can be retained while recovering anomaly
+amplitude and pattern skill.
+
+See `docs/phase5_energy_rollout_plan.md` for the locked plan.
+
 ## Data And Artifacts
 
 This repository stores code, configs, protocols, and lightweight metadata only. It does not store source NetCDF files, generated HDF5 datasets, checkpoints, or rollout outputs.

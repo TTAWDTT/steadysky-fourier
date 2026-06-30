@@ -9,7 +9,7 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout [comma_separated_stage_epochs]}"
+ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout|energy_rollout|spectrum_rollout [comma_separated_stage_epochs]}"
 STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
 EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-0}"
 EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
@@ -34,8 +34,8 @@ if ! [[ "${START_STAGE}" =~ ^[1-9][0-9]*$ ]]; then
   exit 7
 fi
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" ]]; then
-  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, or residual_rollout" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" && "${ARM}" != "energy_rollout" && "${ARM}" != "spectrum_rollout" ]]; then
+  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, residual_rollout, energy_rollout, or spectrum_rollout" >&2
   exit 2
 fi
 
@@ -60,12 +60,18 @@ elif [[ "${ARM}" == "freq_anom" ]]; then
 elif [[ "${ARM}" == "residual_soft" ]]; then
   STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
   RUN_NUM="phase4_residual_soft_edim384"
-else
+elif [[ "${ARM}" == "residual_rollout" ]]; then
   STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
   RUN_NUM="phase4_residual_rollout_edim384"
+elif [[ "${ARM}" == "energy_rollout" ]]; then
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase5_energy_rollout_edim384"
+else
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase5_spectrum_rollout_edim384"
 fi
 
-if [[ "${ARM}" == "residual_rollout" ]]; then
+if [[ "${ARM}" == "residual_rollout" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" ]]; then
   MULTISTEP_COUNTS=(1 1 1 3 6 12)
   STAGE_BATCH_SIZES=(16 16 16 8 4 2)
 else
@@ -94,7 +100,7 @@ cd "${MAKANI}"
 RUN_DIR="${ROOT}/runs/${CONFIG_NAME}/${RUN_NUM}"
 mkdir -p "${RUN_DIR}/training_checkpoints" "${ROOT}/logs"
 
-if [[ "${ARM}" == "freq_loss" || "${ARM}" == "freq_anom" ]]; then
+if [[ "${ARM}" == "freq_loss" || "${ARM}" == "freq_anom" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" ]]; then
   "${PYTHON}" "${REPO}/scripts/install_makani_phase3_losses.py" --makani-root "${MAKANI}"
 fi
 
@@ -138,7 +144,7 @@ txt = txt.replace("${STEADYSKY_WORK}", root)
 txt = txt.replace(f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_raw"', f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_current_{arm}"')
 txt = txt.replace("max_epochs: 300", f"max_epochs: {stage_end_epoch}")
 txt = txt.replace("n_train_samples_per_epoch: 1583", f"n_train_samples_per_epoch: {train_samples_per_epoch}")
-if arm == "residual_rollout":
+if arm in {"residual_rollout", "energy_rollout", "spectrum_rollout"}:
     txt = txt.replace('    pretrained: !!bool False', '    pretrained: !!bool False\n    load_loss: !!bool False')
 if arm in {"freq_loss", "freq_anom"}:
     # Stage-wise frequency curriculum. Inputs and targets remain raw; only
@@ -179,6 +185,47 @@ if arm in {"freq_loss", "freq_anom"}:
             high_weight: {weights["high"]}
             low_max: 5
             mid_max: 20
+'''
+    original = '''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        parameters:
+            squared: !!bool True
+'''
+    if original not in txt:
+        raise RuntimeError("Could not find base loss block to replace")
+    txt = txt.replace(original, base_loss)
+if arm in {"energy_rollout", "spectrum_rollout"} and int(stage_index) >= 4:
+    # Phase 5 keeps Phase 4's residual+rollout data schedule, but adds a
+    # small energy-preservation regularizer in rollout stages to counter the
+    # amplitude collapse observed after Phase 4.
+    regularizer_weights = {
+        4: 0.04,
+        5: 0.06,
+        6: 0.08,
+    }[int(stage_index)]
+    if arm == "energy_rollout":
+        band_weights = {"low": 1.0, "mid": 1.0, "high": 0.0}
+    else:
+        band_weights = {"low": 1.0, "mid": 0.75, "high": 0.25}
+    base_loss = f'''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        relative_weight: 1.0
+        parameters:
+            squared: !!bool True
+    -   type: "spectral_energy_match"
+        channel_weights: "constant"
+        relative_weight: {regularizer_weights}
+        parameters:
+            low_weight: {band_weights["low"]}
+            mid_weight: {band_weights["mid"]}
+            high_weight: {band_weights["high"]}
+            low_max: 5
+            mid_max: 20
+            remove_spatial_mean: !!bool True
 '''
     original = '''    losses:
     -   type: "l2"
