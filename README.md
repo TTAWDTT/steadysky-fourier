@@ -182,10 +182,9 @@ See `docs/phase5_energy_rollout_plan.md` for the locked plan.
 
 ## Phase 6 Plan
 
-Phase 6 is a single-mechanism ablation after Phase 5. It keeps the
-residual+rollout setup and adds a weak rollout-stage attractor-statistics loss
-that matches spatial mean, variance, and adjacent-channel covariance without
-matching exact phase.
+Phase 6 is a two-arm ablation after Phase 5. It keeps the residual+rollout
+setup and tests two architecture-fixed mechanisms: per-sample
+attractor-statistics matching and batch-level feature-distribution matching.
 
 See `docs/phase6_attractor_rollout_plan.md` for the locked plan.
 

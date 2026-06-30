@@ -261,6 +261,79 @@ class AttractorStatsLoss(GeometricBaseLoss):
             channel_weight = wgt.mean(dim=(-2, -1))
             loss = loss * channel_weight
         return loss
+
+
+class FeatureMMDLoss(GeometricBaseLoss):
+    """Batch-level distribution matching over coarse field features.
+
+    Unlike AttractorStatsLoss, this loss does not compare sample i to sample i.
+    It compares the batch distribution of prediction features with the batch
+    distribution of target features using an RBF-kernel MMD. This is a minimal
+    invariant-measure proxy that keeps the architecture fixed.
+    """
+
+    def __init__(
+        self,
+        img_shape: Tuple[int, int],
+        crop_shape: Tuple[int, int],
+        crop_offset: Tuple[int, int],
+        channel_names: List[str],
+        grid_type: str,
+        include_mean: bool = True,
+        include_log_variance: bool = True,
+        include_lowpass_mean: bool = True,
+        bandwidth: float = 1.0,
+        spatial_distributed: Optional[bool] = False,
+        eps: float = 1.0e-8,
+        **kwargs,
+    ):
+        super().__init__(
+            img_shape=img_shape,
+            crop_shape=crop_shape,
+            crop_offset=crop_offset,
+            channel_names=channel_names,
+            grid_type=grid_type,
+            spatial_distributed=spatial_distributed,
+        )
+        self.include_mean = bool(include_mean)
+        self.include_log_variance = bool(include_log_variance)
+        self.include_lowpass_mean = bool(include_lowpass_mean)
+        self.bandwidth = float(bandwidth)
+        self.eps = float(eps)
+
+    def _features(self, x: torch.Tensor) -> torch.Tensor:
+        feats = []
+        mean = x.mean(dim=(-2, -1))
+        centered = x - mean[..., None, None]
+        if self.include_mean:
+            feats.append(mean)
+        if self.include_log_variance:
+            var = centered.square().mean(dim=(-2, -1))
+            feats.append(torch.log(var + self.eps))
+        if self.include_lowpass_mean:
+            pooled = torch.nn.functional.avg_pool2d(x, kernel_size=12, stride=12)
+            feats.append(pooled.flatten(start_dim=1))
+        if not feats:
+            raise RuntimeError("FeatureMMDLoss needs at least one feature family")
+        return torch.cat([f.flatten(start_dim=1) for f in feats], dim=1)
+
+    def _kernel(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        x2 = x.square().sum(dim=1, keepdim=True)
+        y2 = y.square().sum(dim=1, keepdim=True).transpose(0, 1)
+        dist2 = torch.clamp(x2 + y2 - 2.0 * x @ y.transpose(0, 1), min=0.0)
+        gamma = 1.0 / max(2.0 * self.bandwidth * self.bandwidth, self.eps)
+        return torch.exp(-gamma * dist2)
+
+    def forward(self, prd: torch.Tensor, tar: torch.Tensor, wgt: Optional[torch.Tensor] = None, **kwargs) -> torch.Tensor:
+        pred_features = self._features(prd)
+        targ_features = self._features(tar)
+        pred_features = (pred_features - pred_features.mean(dim=0, keepdim=True)) / (pred_features.std(dim=0, keepdim=True) + self.eps)
+        targ_features = (targ_features - targ_features.mean(dim=0, keepdim=True)) / (targ_features.std(dim=0, keepdim=True) + self.eps)
+        k_pp = self._kernel(pred_features, pred_features).mean()
+        k_tt = self._kernel(targ_features, targ_features).mean()
+        k_pt = self._kernel(pred_features, targ_features).mean()
+        mmd = torch.clamp(k_pp + k_tt - 2.0 * k_pt, min=0.0)
+        return mmd.expand(prd.shape[0], prd.shape[1])
 '''
 
 
@@ -282,6 +355,8 @@ def install(makani_root: Path) -> None:
         extra_imports.append("SpectralEnergyMatchLoss")
     if "AttractorStatsLoss" not in registry_text:
         extra_imports.append("AttractorStatsLoss")
+    if "FeatureMMDLoss" not in registry_text:
+        extra_imports.append("FeatureMMDLoss")
     if extra_imports:
         registry_text = registry_text.replace(marker, marker + f"from .losses import {', '.join(extra_imports)}\n")
 
@@ -295,6 +370,8 @@ def install(makani_root: Path) -> None:
         )
     if '"attractor_stats": AttractorStatsLoss' not in registry_text:
         registry_text = registry_text.replace(map_insert, map_insert + '    "attractor_stats": AttractorStatsLoss,\n')
+    if '"feature_mmd": FeatureMMDLoss' not in registry_text:
+        registry_text = registry_text.replace(map_insert, map_insert + '    "feature_mmd": FeatureMMDLoss,\n')
     registry.write_text(registry_text, encoding="utf-8")
 
     init_text = init_file.read_text(encoding="utf-8")
@@ -307,6 +384,10 @@ def install(makani_root: Path) -> None:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
     init_text = init_file.read_text(encoding="utf-8")
     init_line = "from .steadysky_fourier_loss import AttractorStatsLoss\n"
+    if init_line not in init_text:
+        init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
+    init_text = init_file.read_text(encoding="utf-8")
+    init_line = "from .steadysky_fourier_loss import FeatureMMDLoss\n"
     if init_line not in init_text:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
 

@@ -1,20 +1,24 @@
-# Phase 6 Attractor-Statistics Rollout Plan
+# Phase 6 Attractor And Distribution Rollout Plan
 
-Phase 6 is a single-mechanism follow-up to Phase 5.
+Phase 6 is a two-arm follow-up to Phase 5.
 
 Phase 5 asks whether preserving spectral energy during rollout training can
-undo Phase 4's anomaly damping. Phase 6 asks a slightly broader question:
+undo Phase 4's anomaly damping. Phase 6 asks two slightly broader questions:
 
-> Can a rollout-stage attractor-statistics loss preserve anomaly variance and
-> cross-variable structure without prescribing exact phase?
+1. Can rollout-stage attractor-statistics matching preserve anomaly variance
+   and cross-variable structure without prescribing exact phase?
+2. Can batch-level distribution matching preserve the rollout attractor without
+   forcing sample-wise phase alignment?
 
-This is deliberately kept as one new mechanism so the result is interpretable.
+These are different mechanisms. They are kept as separate arms so each remains
+interpretable.
 
-## Arm
+## Arms
 
 | Arm | Run number | New mechanism |
 |---|---|---|
-| Attractor rollout | `phase6_attractor_rollout_edim384` | rollout-stage spatial mean/variance/covariance matching |
+| Phase 6A Attractor rollout | `phase6_attractor_rollout_edim384` | per-sample spatial mean/variance/covariance matching |
+| Phase 6B Distribution rollout | `phase6_distribution_rollout_edim384` | batch-level feature MMD distribution matching |
 
 Everything else follows the Phase 4/5 residual+rollout setup:
 
@@ -27,10 +31,12 @@ Everything else follows the Phase 4/5 residual+rollout setup:
 | Rollout schedule | stages 1-3: 1 step, stage 4: 3 steps, stage 5: 6 steps, stage 6: 12 steps |
 | Batch schedule | 16, 16, 16, 8, 4, 2 |
 
-## Loss
+## Losses
 
 Stages 1-3 use the normal field L2 loss. Stages 4-6 add a weak
-`attractor_stats` term:
+regularizer.
+
+### Phase 6A
 
 ```text
 L = L_field
@@ -51,11 +57,33 @@ The weights are intentionally small:
 | 5 | 6 | 0.05 |
 | 6 | 12 | 0.07 |
 
+### Phase 6B
+
+```text
+L = L_field
+  + lambda_mmd L_feature_mmd
+```
+
+`L_feature_mmd` computes coarse features for every sample, then compares the
+prediction and target batch distributions with an RBF-kernel MMD. Features
+include:
+
+- channel-wise spatial mean,
+- channel-wise log spatial variance,
+- coarse low-pass pooled field values.
+
+| Stage | Multistep count | MMD weight |
+|---:|---:|---:|
+| 4 | 3 | 0.02 |
+| 5 | 6 | 0.035 |
+| 6 | 12 | 0.05 |
+
 ## Why This Differs From Phase 5
 
-Phase 5 preserves spectral energy. Phase 6 preserves broader field-level
-attractor statistics. It should be less tied to any specific Fourier band and
-more directly aimed at the collapse we saw in Phase 4:
+Phase 5 preserves spectral energy. Phase 6A preserves per-sample field-level
+attractor statistics. Phase 6B preserves a batch-level distribution of coarse
+features. Both are less tied to exact Fourier bands and more directly aimed at
+the collapse we saw in Phase 4:
 
 - low anomaly variance,
 - weak Nino3.4 amplitude,
@@ -79,4 +107,6 @@ Desired outcome:
 
 If RMSE worsens sharply while amplitude improves, this is another Phase 3-like
 negative result. If RMSE stays low but amplitude remains collapsed, the
-attractor statistic is too weak or too local.
+regularizer is too weak or too local. If 6B helps more than 6A, the lesson is
+that invariant-measure style distribution matching is better than per-sample
+statistic matching for this problem.
