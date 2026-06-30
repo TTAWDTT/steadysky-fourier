@@ -180,6 +180,14 @@ amplitude and pattern skill.
 
 See `docs/phase5_energy_rollout_plan.md` for the locked plan.
 
+## Phase 6 Plan
+
+Phase 6 is a two-arm ablation after Phase 5. It keeps the residual+rollout
+setup and tests two architecture-fixed mechanisms: per-sample
+attractor-statistics matching and batch-level feature-distribution matching.
+
+See `docs/phase6_attractor_rollout_plan.md` for the locked plan.
+
 ## Data And Artifacts
 
 This repository stores code, configs, protocols, and lightweight metadata only. It does not store source NetCDF files, generated HDF5 datasets, checkpoints, or rollout outputs.

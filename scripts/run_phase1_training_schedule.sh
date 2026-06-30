@@ -9,7 +9,7 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout|energy_rollout|spectrum_rollout [comma_separated_stage_epochs]}"
+ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout|energy_rollout|spectrum_rollout|attractor_rollout|distribution_rollout [comma_separated_stage_epochs]}"
 STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
 EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-0}"
 EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
@@ -34,8 +34,8 @@ if ! [[ "${START_STAGE}" =~ ^[1-9][0-9]*$ ]]; then
   exit 7
 fi
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" && "${ARM}" != "energy_rollout" && "${ARM}" != "spectrum_rollout" ]]; then
-  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, residual_rollout, energy_rollout, or spectrum_rollout" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" && "${ARM}" != "energy_rollout" && "${ARM}" != "spectrum_rollout" && "${ARM}" != "attractor_rollout" && "${ARM}" != "distribution_rollout" ]]; then
+  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, residual_rollout, energy_rollout, spectrum_rollout, attractor_rollout, or distribution_rollout" >&2
   exit 2
 fi
 
@@ -66,12 +66,18 @@ elif [[ "${ARM}" == "residual_rollout" ]]; then
 elif [[ "${ARM}" == "energy_rollout" ]]; then
   STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
   RUN_NUM="phase5_energy_rollout_edim384"
-else
+elif [[ "${ARM}" == "spectrum_rollout" ]]; then
   STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
   RUN_NUM="phase5_spectrum_rollout_edim384"
+elif [[ "${ARM}" == "attractor_rollout" ]]; then
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase6_attractor_rollout_edim384"
+else
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase6_distribution_rollout_edim384"
 fi
 
-if [[ "${ARM}" == "residual_rollout" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" ]]; then
+if [[ "${ARM}" == "residual_rollout" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" ]]; then
   MULTISTEP_COUNTS=(1 1 1 3 6 12)
   STAGE_BATCH_SIZES=(16 16 16 8 4 2)
 else
@@ -100,7 +106,7 @@ cd "${MAKANI}"
 RUN_DIR="${ROOT}/runs/${CONFIG_NAME}/${RUN_NUM}"
 mkdir -p "${RUN_DIR}/training_checkpoints" "${ROOT}/logs"
 
-if [[ "${ARM}" == "freq_loss" || "${ARM}" == "freq_anom" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" ]]; then
+if [[ "${ARM}" == "freq_loss" || "${ARM}" == "freq_anom" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" ]]; then
   "${PYTHON}" "${REPO}/scripts/install_makani_phase3_losses.py" --makani-root "${MAKANI}"
 fi
 
@@ -144,7 +150,7 @@ txt = txt.replace("${STEADYSKY_WORK}", root)
 txt = txt.replace(f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_raw"', f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_current_{arm}"')
 txt = txt.replace("max_epochs: 300", f"max_epochs: {stage_end_epoch}")
 txt = txt.replace("n_train_samples_per_epoch: 1583", f"n_train_samples_per_epoch: {train_samples_per_epoch}")
-if arm in {"residual_rollout", "energy_rollout", "spectrum_rollout"}:
+if arm in {"residual_rollout", "energy_rollout", "spectrum_rollout", "attractor_rollout", "distribution_rollout"}:
     txt = txt.replace('    pretrained: !!bool False', '    pretrained: !!bool False\n    load_loss: !!bool False')
 if arm in {"freq_loss", "freq_anom"}:
     # Stage-wise frequency curriculum. Inputs and targets remain raw; only
@@ -226,6 +232,75 @@ if arm in {"energy_rollout", "spectrum_rollout"} and int(stage_index) >= 4:
             low_max: 5
             mid_max: 20
             remove_spatial_mean: !!bool True
+'''
+    original = '''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        parameters:
+            squared: !!bool True
+'''
+    if original not in txt:
+        raise RuntimeError("Could not find base loss block to replace")
+    txt = txt.replace(original, base_loss)
+if arm == "attractor_rollout" and int(stage_index) >= 4:
+    # Phase 6 adds one new mechanism on top of Phase 4 residual+rollout:
+    # a weak attractor-statistics term that matches spatial mean, variance,
+    # and adjacent-channel covariance without prescribing exact phase.
+    regularizer_weights = {
+        4: 0.03,
+        5: 0.05,
+        6: 0.07,
+    }[int(stage_index)]
+    base_loss = f'''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        relative_weight: 1.0
+        parameters:
+            squared: !!bool True
+    -   type: "attractor_stats"
+        channel_weights: "constant"
+        relative_weight: {regularizer_weights}
+        parameters:
+            mean_weight: 0.25
+            variance_weight: 1.0
+            covariance_weight: 0.25
+            use_log_variance: !!bool True
+'''
+    original = '''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        parameters:
+            squared: !!bool True
+'''
+    if original not in txt:
+        raise RuntimeError("Could not find base loss block to replace")
+    txt = txt.replace(original, base_loss)
+if arm == "distribution_rollout" and int(stage_index) >= 4:
+    # Phase 6B uses a different mechanism from attractor_rollout: batch-level
+    # distribution matching with an MMD over coarse summary features.
+    regularizer_weights = {
+        4: 0.02,
+        5: 0.035,
+        6: 0.05,
+    }[int(stage_index)]
+    base_loss = f'''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        relative_weight: 1.0
+        parameters:
+            squared: !!bool True
+    -   type: "feature_mmd"
+        channel_weights: "constant"
+        relative_weight: {regularizer_weights}
+        parameters:
+            include_mean: !!bool True
+            include_log_variance: !!bool True
+            include_lowpass_mean: !!bool True
+            bandwidth: 1.0
 '''
     original = '''    losses:
     -   type: "l2"
