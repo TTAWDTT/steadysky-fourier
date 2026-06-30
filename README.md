@@ -180,6 +180,11 @@ amplitude and pattern skill.
 
 See `docs/phase5_energy_rollout_plan.md` for the locked plan.
 
+Phase 6 is pre-specified as the next layer after Phase 5: invariant-statistics
+rollout training as the architecture-fixed main line, and probabilistic
+residual modeling as an exploratory branch. See
+`docs/phase6_attractor_and_probabilistic_plan.md`.
+
 ## Data And Artifacts
 
 This repository stores code, configs, protocols, and lightweight metadata only. It does not store source NetCDF files, generated HDF5 datasets, checkpoints, or rollout outputs.
