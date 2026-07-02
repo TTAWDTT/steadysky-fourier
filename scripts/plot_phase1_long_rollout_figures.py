@@ -27,6 +27,8 @@ SELECTED_LEADS = [1, 3, 6, 12, 30, 60, 120]
 RAW_COLOR = "#7B8794"
 FOURIER_COLOR = "#E76F51"
 TRUTH_COLOR = "#264653"
+REFERENCE_LABEL = "Raw baseline"
+CANDIDATE_LABEL = "Fourier curriculum"
 
 
 def _style() -> None:
@@ -137,6 +139,18 @@ def _read_truth(test_h5: Path, target_indices: np.ndarray) -> np.ndarray:
         return hf["fields"][target_indices, :, :, :].astype(np.float32)
 
 
+def _forecast_path(run_root: Path, run_num: str, rollout_months: int) -> Path:
+    score_dir = run_root / run_num / "scores"
+    candidates = [
+        score_dir / f"{run_num}_rollout{rollout_months}_forecasts.h5",
+        score_dir / f"{run_num.replace('_edim384', '')}_rollout{rollout_months}_forecasts.h5",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
+
+
 def plot_nino34(
     out_dir: Path,
     lead_months: np.ndarray,
@@ -152,8 +166,8 @@ def plot_nino34(
     ax = axes[0]
     ax.plot(test_months, truth_full, color=TRUTH_COLOR, label="Truth", linewidth=2.0)
     for i, base in enumerate(base_indices):
-        label_raw = "Raw rollout" if i == 0 else None
-        label_fourier = "Fourier rollout" if i == 0 else None
+        label_raw = REFERENCE_LABEL if i == 0 else None
+        label_fourier = CANDIDATE_LABEL if i == 0 else None
         x = base + lead_months
         ax.plot(x, raw_traj[i], color=RAW_COLOR, alpha=0.45, linewidth=1.0, label=label_raw)
         ax.plot(x, fourier_traj[i], color=FOURIER_COLOR, alpha=0.55, linewidth=1.0, label=label_fourier)
@@ -164,8 +178,8 @@ def plot_nino34(
     ax.legend(loc="best")
 
     ax = axes[1]
-    ax.plot(lead_months, raw_rmse, color=RAW_COLOR, label="Raw baseline")
-    ax.plot(lead_months, fourier_rmse, color=FOURIER_COLOR, label="Fourier curriculum")
+    ax.plot(lead_months, raw_rmse, color=RAW_COLOR, label=REFERENCE_LABEL)
+    ax.plot(lead_months, fourier_rmse, color=FOURIER_COLOR, label=CANDIDATE_LABEL)
     ax.set_title("Nino3.4 rollout error")
     ax.set_xlabel("Lead time (months)")
     ax.set_ylabel("RMSE")
@@ -194,8 +208,8 @@ def plot_nino34_clean(
     ax = axes[0]
     for mean, lo, hi, color, label in [
         (truth_mean, truth_lo, truth_hi, TRUTH_COLOR, "Truth"),
-        (raw_mean, raw_lo, raw_hi, RAW_COLOR, "Raw baseline"),
-        (fourier_mean, fourier_lo, fourier_hi, FOURIER_COLOR, "Fourier curriculum"),
+        (raw_mean, raw_lo, raw_hi, RAW_COLOR, REFERENCE_LABEL),
+        (fourier_mean, fourier_lo, fourier_hi, FOURIER_COLOR, CANDIDATE_LABEL),
     ]:
         ax.plot(lead_months, mean, color=color, label=label)
         ax.fill_between(lead_months, lo, hi, color=color, alpha=0.12, linewidth=0)
@@ -206,8 +220,8 @@ def plot_nino34_clean(
     ax.legend(loc="best")
 
     ax = axes[1]
-    ax.plot(lead_months, raw_rmse, color=RAW_COLOR, label="Raw baseline")
-    ax.plot(lead_months, fourier_rmse, color=FOURIER_COLOR, label="Fourier curriculum")
+    ax.plot(lead_months, raw_rmse, color=RAW_COLOR, label=REFERENCE_LABEL)
+    ax.plot(lead_months, fourier_rmse, color=FOURIER_COLOR, label=CANDIDATE_LABEL)
     ax.set_title("Nino3.4 rollout RMSE")
     ax.set_xlabel("Lead time (months)")
     ax.set_ylabel("RMSE")
@@ -219,8 +233,8 @@ def plot_nino34_clean(
     for i, base in enumerate(base_indices):
         ax = axes[i]
         ax.plot(lead_months, truth_traj[i], color=TRUTH_COLOR, label="Truth")
-        ax.plot(lead_months, raw_traj[i], color=RAW_COLOR, label="Raw")
-        ax.plot(lead_months, fourier_traj[i], color=FOURIER_COLOR, label="Fourier")
+        ax.plot(lead_months, raw_traj[i], color=RAW_COLOR, label=REFERENCE_LABEL)
+        ax.plot(lead_months, fourier_traj[i], color=FOURIER_COLOR, label=CANDIDATE_LABEL)
         ax.axhline(0.0, color="#333333", linewidth=0.7, alpha=0.35)
         ax.set_title(f"IC test month {int(base)}")
         ax.set_xlabel("Lead")
@@ -239,8 +253,8 @@ def plot_nino34_lead_mean(
 ) -> None:
     fig, ax = plt.subplots(figsize=(4.4, 2.7), constrained_layout=True)
     ax.plot(lead_months, truth, color=TRUTH_COLOR, label="Truth lead-mean")
-    ax.plot(lead_months, raw, color=RAW_COLOR, label="Raw lead-mean")
-    ax.plot(lead_months, fourier, color=FOURIER_COLOR, label="Fourier lead-mean")
+    ax.plot(lead_months, raw, color=RAW_COLOR, label=f"{REFERENCE_LABEL} lead-mean")
+    ax.plot(lead_months, fourier, color=FOURIER_COLOR, label=f"{CANDIDATE_LABEL} lead-mean")
     ax.axhline(0.0, color="#333333", linewidth=0.8, alpha=0.4)
     ax.set_title("Nino3.4 lead-mean diagnostic")
     ax.set_xlabel("Lead time (months)")
@@ -253,8 +267,8 @@ def plot_drift(out_dir: Path, lead_months: np.ndarray, drift: Dict[str, np.ndarr
     fig, axes = plt.subplots(2, 4, figsize=(10.2, 4.6), constrained_layout=True)
     for ci, ch in enumerate(CHANNELS):
         ax = axes[0, ci]
-        ax.plot(lead_months, drift["raw"][:, ci], color=RAW_COLOR, label="Raw")
-        ax.plot(lead_months, drift["fourier"][:, ci], color=FOURIER_COLOR, label="Fourier")
+        ax.plot(lead_months, drift["raw"][:, ci], color=RAW_COLOR, label=REFERENCE_LABEL)
+        ax.plot(lead_months, drift["fourier"][:, ci], color=FOURIER_COLOR, label=CANDIDATE_LABEL)
         ax.axhline(0.0, color="#333333", linewidth=0.8, alpha=0.4)
         ax.set_title(f"{ch} drift")
         ax.set_xlabel("Lead")
@@ -262,8 +276,8 @@ def plot_drift(out_dir: Path, lead_months: np.ndarray, drift: Dict[str, np.ndarr
             ax.set_ylabel("Mean forecast - truth")
 
         ax = axes[1, ci]
-        ax.plot(lead_months, rmse["raw"][:, ci], color=RAW_COLOR, label="Raw")
-        ax.plot(lead_months, rmse["fourier"][:, ci], color=FOURIER_COLOR, label="Fourier")
+        ax.plot(lead_months, rmse["raw"][:, ci], color=RAW_COLOR, label=REFERENCE_LABEL)
+        ax.plot(lead_months, rmse["fourier"][:, ci], color=FOURIER_COLOR, label=CANDIDATE_LABEL)
         ax.set_title(f"{ch} RMSE")
         ax.set_xlabel("Lead")
         if ci == 0:
@@ -281,7 +295,7 @@ def plot_spatial(out_dir: Path, lead: int, lat: np.ndarray, lon: np.ndarray, tru
     fig, axes = plt.subplots(4, 3, figsize=(9.2, 7.6), constrained_layout=True)
     for ci, ch in enumerate(CHANNELS):
         vmin, vmax = _robust_limits([truth_mean[ci], raw_mean[ci], fourier_mean[ci]])
-        for j, (name, arr) in enumerate([("Truth", truth_mean), ("Raw", raw_mean), ("Fourier", fourier_mean)]):
+        for j, (name, arr) in enumerate([("Truth", truth_mean), (REFERENCE_LABEL, raw_mean), (CANDIDATE_LABEL, fourier_mean)]):
             ax = axes[ci, j]
             im = ax.imshow(arr[ci], origin="lower", extent=extent, cmap="viridis", vmin=vmin, vmax=vmax, aspect="auto")
             ax.set_title(f"{name} {ch}")
@@ -303,9 +317,9 @@ def plot_error(out_dir: Path, lead: int, lat: np.ndarray, lon: np.ndarray, truth
         evmin, evmax = _robust_limits([raw_err[ci], fourier_err[ci]], symmetric=True)
         ivmin, ivmax = _robust_limits([improvement[ci]], symmetric=True)
         panels = [
-            ("Raw - truth", raw_err[ci], "coolwarm", evmin, evmax),
-            ("Fourier - truth", fourier_err[ci], "coolwarm", evmin, evmax),
-            ("|Raw err| - |Fourier err|", improvement[ci], "RdBu_r", ivmin, ivmax),
+            (f"{REFERENCE_LABEL} - truth", raw_err[ci], "coolwarm", evmin, evmax),
+            (f"{CANDIDATE_LABEL} - truth", fourier_err[ci], "coolwarm", evmin, evmax),
+            (f"|{REFERENCE_LABEL} err| - |{CANDIDATE_LABEL} err|", improvement[ci], "RdBu_r", ivmin, ivmax),
         ]
         for j, (title, arr, cmap, vmin, vmax) in enumerate(panels):
             ax = axes[ci, j]
@@ -326,8 +340,8 @@ def plot_spectrum(out_dir: Path, lead: int, truth: np.ndarray, raw: np.ndarray, 
         mask = valid_mask[ci].astype(bool)
         for name, arr, color in [
             ("Truth", truth[:, ci], TRUTH_COLOR),
-            ("Raw", raw[:, ci], RAW_COLOR),
-            ("Fourier", fourier[:, ci], FOURIER_COLOR),
+            (REFERENCE_LABEL, raw[:, ci], RAW_COLOR),
+            (CANDIDATE_LABEL, fourier[:, ci], FOURIER_COLOR),
         ]:
             k, spec = _radial_spectrum(arr, mask)
             ax.loglog(k[1:], spec[1:] + 1e-30, color=color, label=name)
@@ -340,22 +354,31 @@ def plot_spectrum(out_dir: Path, lead: int, truth: np.ndarray, raw: np.ndarray, 
 
 
 def main() -> None:
+    global REFERENCE_LABEL, CANDIDATE_LABEL
     parser = argparse.ArgumentParser()
     parser.add_argument("--work-root", type=Path, default=Path("/mnt/nvme1/lz/fourier_layerwise_weather"))
     parser.add_argument("--rollout-months", type=int, default=120)
     parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument("--reference-run-num", default="phase1_raw_edim384")
+    parser.add_argument("--candidate-run-num", default="phase1_fourier_edim384")
+    parser.add_argument("--reference-label", default=REFERENCE_LABEL)
+    parser.add_argument("--candidate-label", default=CANDIDATE_LABEL)
+    parser.add_argument("--figure-prefix", default="phase1_rollout")
     args = parser.parse_args()
+
+    REFERENCE_LABEL = args.reference_label
+    CANDIDATE_LABEL = args.candidate_label
 
     _style()
     root = args.work_root
     run_root = root / "runs" / "sfno_walker_1deg_edim384_layers8"
-    raw_forecast = run_root / "phase1_raw_edim384" / "scores" / f"phase1_raw_rollout{args.rollout_months}_forecasts.h5"
-    fourier_forecast = run_root / "phase1_fourier_edim384" / "scores" / f"phase1_fourier_rollout{args.rollout_months}_forecasts.h5"
+    raw_forecast = _forecast_path(run_root, args.reference_run_num, args.rollout_months)
+    fourier_forecast = _forecast_path(run_root, args.candidate_run_num, args.rollout_months)
     test_h5 = root / "data" / "walker_ocean_1deg_full" / "test_raw" / "test.h5"
     manifest_path = root / "data" / "walker_ocean_1deg_full" / "manifest.json"
     time_means_path = root / "data" / "walker_ocean_1deg_full" / "stats_raw" / "time_means.npy"
     valid_mask_path = root / "data" / "walker_ocean_1deg_full" / "stats_raw" / "valid_mask.npy"
-    out_dir = args.output_dir or (root / "figures" / f"phase1_rollout{args.rollout_months}")
+    out_dir = args.output_dir or (root / "figures" / f"{args.figure_prefix}{args.rollout_months}")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     slots, base_indices = _rollout_alignment(raw_forecast, test_h5)
@@ -466,11 +489,15 @@ def main() -> None:
         "drift": {k: v.tolist() for k, v in drift.items()},
         "rmse": {k: v.tolist() for k, v in rmse.items()},
         "channels": CHANNELS,
+        "reference_run_num": args.reference_run_num,
+        "candidate_run_num": args.candidate_run_num,
+        "reference_label": REFERENCE_LABEL,
+        "candidate_label": CANDIDATE_LABEL,
         "nino34_region": {"lat": [-5.0, 5.0], "lon": [190.0, 240.0], "variable": "tos"},
     }
-    (out_dir / "phase1_rollout_diagnostics.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (out_dir / f"{args.figure_prefix}_diagnostics.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     np.savez_compressed(
-        out_dir / "phase1_rollout_diagnostics.npz",
+        out_dir / f"{args.figure_prefix}_diagnostics.npz",
         lead_months=lead_months,
         nino_truth=nino["truth"],
         nino_truth_full_test=truth_nino_full,
