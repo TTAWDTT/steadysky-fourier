@@ -180,13 +180,25 @@ amplitude and pattern skill.
 
 See `docs/phase5_energy_rollout_plan.md` for the locked plan.
 
-## Phase 6 Plan
+## Phase 6 Results
 
-Phase 6 is a two-arm ablation after Phase 5. It keeps the residual+rollout
-setup and tests two architecture-fixed mechanisms: per-sample
-attractor-statistics matching and batch-level feature-distribution matching.
+Phase 6 keeps the residual+rollout setup and tests two architecture-fixed
+mechanisms: per-sample attractor-statistics matching and batch-level
+feature-distribution matching.
 
-See `docs/phase6_attractor_rollout_plan.md` for the locked plan.
+The result is useful and sharper than Phase 5. Per-sample attractor statistics
+did not fix anomaly collapse. Batch-level feature-distribution matching is the
+first follow-up arm to improve the formal 120-month Makani metrics over Phase 4
+while also restoring some Nino3.4 anomaly amplitude. It is still not a clean
+long-range phase-skill result: the Nino3.4 amplitude is healthier, but regional
+timing error remains.
+
+![Phase 6B Nino3.4 summary](assets/phase6/fig_phase6_distribution_nino34_summary.png)
+
+![Phase 6B 120-month spectra](assets/phase6/fig_phase6_distribution_spectrum_lead120.png)
+
+See `docs/phase6_attractor_distribution_results.md` for the full table,
+diagnostic figures, and Phase 7 consequence.
 
 ## Data And Artifacts
 

@@ -1,17 +1,19 @@
 # Phase 7 Closed-Loop Stability Plan
 
-Phase 7 should be chosen after reading the completed Phase 6 120-month rollout
-metrics. The working hypothesis is already clear enough to lock the next two
-candidate mechanisms:
+Phase 7 follows the completed Phase 6 120-month rollout metrics. The result
+locks the next two candidate mechanisms:
 
 1. Phase 4 made long rollouts stable mostly by damping anomalies.
 2. Phase 5 made spectral or energy collapse more expensive, but did not clearly
    improve skill over Phase 4.
-3. Phase 6 tests attractor-level statistics and batch distribution matching.
+3. Phase 6A per-sample attractor statistics did not fix anomaly collapse.
+4. Phase 6B batch-level distribution matching improved the formal 120-month
+   Makani metrics and restored some Nino3.4 amplitude, but did not yet solve
+   regional phase skill.
 
-If Phase 6 still cannot recover long-lead phase skill, Phase 7 should stop
-adding stronger pointwise spectral penalties and instead train the model to be
-stable under its own closed-loop dynamics.
+Phase 7 should therefore stop adding stronger pointwise spectral penalties and
+instead train the model to be stable under its own closed-loop dynamics while
+anchoring short-to-medium lead phase.
 
 ## Arms
 
@@ -76,7 +78,13 @@ Primary success criteria:
 - raise tos and Nino3.4 amplitude above Phase 4 without spectral explosion,
 - reduce the Nino3.4 positive-bias/damping pattern seen in earlier rollouts.
 
-If Phase 6A already improves both RMSE and amplitude, Phase 7A should be the
-first launch because it is the cleaner mathematical continuation. If Phase 6B
-improves distributional amplitude but harms RMSE, Phase 7B should be prioritized
-because it anchors local skill while keeping rollout training.
+## Recommended Order
+
+Phase 7B should run first. Phase 6B suggests that distributional realism helps,
+but the remaining failure is phase and regional trajectory anchoring. A raw
+one-step teacher is the most direct way to keep short-lead variability while
+the student still learns multistep stability.
+
+Phase 7A should run second. It is the cleaner mathematical continuation for
+irreversible low-frequency collapse, but it is likely harder to implement
+faithfully in the current Makani path.
