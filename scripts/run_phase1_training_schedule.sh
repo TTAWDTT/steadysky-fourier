@@ -328,8 +328,8 @@ if arm in {"long_distribution_rollout", "anchored_distribution_rollout"} and int
     # Phase 7 deepens the positive Phase 6B result. Both arms keep the
     # residual+rollout data schedule and feature-MMD distribution matching.
     # 7A extends the model-induced rollout distribution to 24 steps. 7B keeps
-    # the 12-step cap but adds a tendency-space anchor to protect short/medium
-    # trajectory direction while preserving the distributional benefit.
+    # the 12-step cap but adds a short-lead field anchor to protect trajectory
+    # phase while preserving the distributional benefit.
     if arm == "long_distribution_rollout":
         regularizer_weights = {
             3: 0.02,
@@ -368,13 +368,14 @@ if arm in {"long_distribution_rollout", "anchored_distribution_rollout"} and int
             bandwidth: 1.0
 '''
     if tendency_weight > 0:
-        base_loss += f'''    -   type: "l2"
-        tendency: !!bool True
+        base_loss += f'''    -   type: "short_lead_l2"
         channel_weights: "constant"
         temp_diff_normalization: !!bool True
         relative_weight: {tendency_weight}
         parameters:
             squared: !!bool True
+            max_lead: 2
+            decay: 1.0
 '''
     original = '''    losses:
     -   type: "l2"

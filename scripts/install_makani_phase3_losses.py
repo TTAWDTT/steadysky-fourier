@@ -338,6 +338,62 @@ class FeatureMMDLoss(GeometricBaseLoss):
         k_pt = self._kernel(pred_features, targ_features).mean()
         mmd = torch.clamp(k_pp + k_tt - 2.0 * k_pt, min=0.0)
         return mmd.expand(prd.shape[0], prd.shape[1])
+
+
+class ShortLeadLpLoss(GeometricBaseLoss):
+    """Extra pointwise anchor on the first few rollout leads.
+
+    Makani's built-in tendency transform is single-step oriented and cannot be
+    used directly when multistep predictions are flattened as
+    (n_future + 1) * channels. This loss instead uses the lead_time_step vector
+    supplied by LossHandler to make early rollout field errors more expensive.
+    """
+
+    def __init__(
+        self,
+        img_shape: Tuple[int, int],
+        crop_shape: Tuple[int, int],
+        crop_offset: Tuple[int, int],
+        channel_names: List[str],
+        grid_type: str,
+        p: float = 2.0,
+        squared: bool = True,
+        max_lead: int = 2,
+        decay: float = 1.0,
+        spatial_distributed: Optional[bool] = False,
+        eps: float = 1.0e-8,
+        **kwargs,
+    ):
+        super().__init__(
+            img_shape=img_shape,
+            crop_shape=crop_shape,
+            crop_offset=crop_offset,
+            channel_names=channel_names,
+            grid_type=grid_type,
+            spatial_distributed=spatial_distributed,
+        )
+        self.p = float(p)
+        self.squared = bool(squared)
+        self.max_lead = int(max_lead)
+        self.decay = float(decay)
+        self.eps = float(eps)
+
+    def forward(self, prd: torch.Tensor, tar: torch.Tensor, wgt: Optional[torch.Tensor] = None, **kwargs) -> torch.Tensor:
+        num_examples = prd.shape[0]
+        diff = torch.abs(prd - tar).pow(self.p)
+        if wgt is not None:
+            diff = diff * wgt
+        loss = self.quadrature(diff).reshape(num_examples, -1)
+        if not self.squared:
+            loss = loss.pow(1.0 / self.p)
+
+        lead_time_step = kwargs.get("lead_time_step")
+        if lead_time_step is None:
+            return loss
+        leads = lead_time_step.to(device=loss.device, dtype=loss.dtype)
+        mask = (leads <= self.max_lead).to(dtype=loss.dtype)
+        weights = torch.exp(-leads / max(self.decay, self.eps)) * mask
+        return loss * weights[None, :]
 '''
 
 
@@ -361,6 +417,8 @@ def install(makani_root: Path) -> None:
         extra_imports.append("AttractorStatsLoss")
     if "FeatureMMDLoss" not in registry_text:
         extra_imports.append("FeatureMMDLoss")
+    if "ShortLeadLpLoss" not in registry_text:
+        extra_imports.append("ShortLeadLpLoss")
     if extra_imports:
         registry_text = registry_text.replace(marker, marker + f"from .losses import {', '.join(extra_imports)}\n")
 
@@ -376,6 +434,8 @@ def install(makani_root: Path) -> None:
         registry_text = registry_text.replace(map_insert, map_insert + '    "attractor_stats": AttractorStatsLoss,\n')
     if '"feature_mmd": FeatureMMDLoss' not in registry_text:
         registry_text = registry_text.replace(map_insert, map_insert + '    "feature_mmd": FeatureMMDLoss,\n')
+    if '"short_lead_l2": ShortLeadLpLoss' not in registry_text:
+        registry_text = registry_text.replace(map_insert, map_insert + '    "short_lead_l2": ShortLeadLpLoss,\n')
     registry.write_text(registry_text, encoding="utf-8")
 
     init_text = init_file.read_text(encoding="utf-8")
@@ -392,6 +452,10 @@ def install(makani_root: Path) -> None:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
     init_text = init_file.read_text(encoding="utf-8")
     init_line = "from .steadysky_fourier_loss import FeatureMMDLoss\n"
+    if init_line not in init_text:
+        init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
+    init_text = init_file.read_text(encoding="utf-8")
+    init_line = "from .steadysky_fourier_loss import ShortLeadLpLoss\n"
     if init_line not in init_text:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
 
