@@ -393,6 +393,11 @@ class ShortLeadLpLoss(GeometricBaseLoss):
         leads = lead_time_step.to(device=loss.device, dtype=loss.dtype)
         mask = (leads <= self.max_lead).to(dtype=loss.dtype)
         weights = torch.exp(-leads / max(self.decay, self.eps)) * mask
+        if weights.numel() != loss.shape[1]:
+            if loss.shape[1] == self.n_channels:
+                weights = torch.ones(loss.shape[1], device=loss.device, dtype=loss.dtype)
+            else:
+                raise RuntimeError(f"ShortLeadLpLoss got {loss.shape[1]} loss channels but {weights.numel()} lead weights")
         return loss * weights[None, :]
 '''
 
