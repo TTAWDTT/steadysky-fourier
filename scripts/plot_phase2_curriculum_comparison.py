@@ -60,6 +60,9 @@ LABELS = {
     "freq_anom": "Freq+anom",
     "residual_soft": "Soft residual",
     "residual_rollout": "Residual+rollout",
+    "distribution_rollout": "Distribution rollout",
+    "long_distribution_best": "Long distribution best",
+    "anchored_distribution": "Anchored distribution",
     "persistence": "Persistence",
     "climatology": "Climatology",
     "truth": "Truth",
@@ -183,7 +186,7 @@ def _radial_band_power(fields: np.ndarray, mask: np.ndarray) -> Dict[str, float]
     return {k: float(np.nanmean(v)) for k, v in sums.items()}
 
 
-def _forecast_paths(run_root: Path, rollout_months: int) -> List[MethodSpec]:
+def _phase2_forecast_paths(run_root: Path, rollout_months: int) -> List[MethodSpec]:
     return [
         MethodSpec("raw", run_root / "phase1_raw_edim384" / "scores" / f"phase1_raw_rollout{rollout_months}_forecasts.h5"),
         MethodSpec("fourier", run_root / "phase1_fourier_edim384" / "scores" / f"phase1_fourier_rollout{rollout_months}_forecasts.h5"),
@@ -194,6 +197,54 @@ def _forecast_paths(run_root: Path, rollout_months: int) -> List[MethodSpec]:
         MethodSpec("residual_soft", run_root / "phase4_residual_soft_edim384" / "scores" / f"phase4_residual_soft_edim384_rollout{rollout_months}_forecasts.h5"),
         MethodSpec("residual_rollout", run_root / "phase4_residual_rollout_edim384" / "scores" / f"phase4_residual_rollout_edim384_rollout{rollout_months}_forecasts.h5"),
     ]
+
+
+def _phase7_forecast_paths(run_root: Path, rollout_months: int) -> List[MethodSpec]:
+    return [
+        MethodSpec(
+            "residual_rollout",
+            run_root / "phase4_residual_rollout_edim384" / "scores" / f"phase4_residual_rollout_edim384_rollout{rollout_months}_forecasts.h5",
+        ),
+        MethodSpec(
+            "distribution_rollout",
+            run_root / "phase6_distribution_rollout_edim384" / "scores" / f"phase6_distribution_rollout_edim384_rollout{rollout_months}_forecasts.h5",
+        ),
+        MethodSpec(
+            "long_distribution_best",
+            run_root
+            / "phase7_long_distribution_rollout_best_edim384"
+            / "scores"
+            / f"phase7_long_distribution_rollout_best_edim384_rollout{rollout_months}_forecasts.h5",
+        ),
+        MethodSpec(
+            "anchored_distribution",
+            run_root
+            / "phase7_anchored_distribution_rollout_edim384"
+            / "scores"
+            / f"phase7_anchored_distribution_rollout_edim384_rollout{rollout_months}_forecasts.h5",
+        ),
+    ]
+
+
+def _set_phase7_methods() -> None:
+    global MODEL_METHODS, ALL_METHODS, SKILL_METHODS
+    MODEL_METHODS = ["residual_rollout", "distribution_rollout", "long_distribution_best", "anchored_distribution"]
+    ALL_METHODS = MODEL_METHODS + REFERENCE_METHODS
+    SKILL_METHODS = MODEL_METHODS + ["persistence"]
+    COLORS.update(
+        {
+            "distribution_rollout": "#1F9D8A",
+            "long_distribution_best": "#D1495B",
+            "anchored_distribution": "#2F6FED",
+        }
+    )
+
+
+def _forecast_paths(run_root: Path, rollout_months: int, comparison: str) -> List[MethodSpec]:
+    if comparison == "phase7":
+        _set_phase7_methods()
+        return _phase7_forecast_paths(run_root, rollout_months)
+    return _phase2_forecast_paths(run_root, rollout_months)
 
 
 def _read_forecasts(paths: Dict[str, h5py.File], slots: np.ndarray, lead: int) -> Dict[str, np.ndarray]:
@@ -351,12 +402,13 @@ def main() -> None:
     parser.add_argument("--asset-dir", type=Path, default=None)
     parser.add_argument("--figure-prefix", default="fig_phase2")
     parser.add_argument("--summary-stem", default="phase2_curriculum_comparison")
+    parser.add_argument("--comparison", choices=["phase2", "phase7"], default="phase2")
     args = parser.parse_args()
 
     _style()
     root = args.work_root
     run_root = root / "runs" / "sfno_walker_1deg_edim384_layers8"
-    forecasts = _forecast_paths(run_root, args.rollout_months)
+    forecasts = _forecast_paths(run_root, args.rollout_months, args.comparison)
     for spec in forecasts:
         if not spec.forecast.exists():
             raise FileNotFoundError(f"Missing forecast for {spec.name}: {spec.forecast}")
