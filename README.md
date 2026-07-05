@@ -200,6 +200,34 @@ timing error remains.
 See `docs/phase6_attractor_distribution_results.md` for the full table,
 diagnostic figures, and Phase 7 consequence.
 
+## Phase 7 Results
+
+Phase 7 asked whether Phase 6B simply needed stronger closed-loop pressure.
+Two follow-ups were tested: a longer distribution-matched rollout schedule and
+a short-lead field anchor added to distribution rollout training.
+
+Both were negative results. The long-rollout arm became non-finite in the final
+raw stage, and its pre-NaN best checkpoint still underperformed Phase 6B. The
+anchored arm trained cleanly, but worsened the 120-month formal Makani `tos`
+metrics and did not improve Nino3.4 trajectory skill.
+
+| Arm | 120-month tos RMSE | 120-month tos ACC | 120-month tos CRPS |
+|---|---:|---:|---:|
+| Phase 6B distribution rollout | **0.7375** | **9.4922** | **0.4818** |
+| Phase 7A long distribution, best checkpoint | 0.8628 | 9.0205 | 0.6067 |
+| Phase 7B anchored distribution | 0.8103 | 8.8920 | 0.5375 |
+
+![Phase 7 key lead summary](assets/phase7/fig_phase7_key_lead_summary.png)
+
+![Phase 7 Nino3.4 skill vs smoothing](assets/phase7/fig_phase7_nino34_skill_vs_smoothing.png)
+
+See `docs/phase7_distribution_rollout_results.md` for the full table,
+diagnostic figures, and Phase 8 consequence.
+
+The next locked direction is in `docs/phase8_invariant_rollout_plan.md`: keep
+Phase 6B's distribution-level benefit, but constrain slow drift and broad
+spectral shape rather than adding more short-lead pointwise pressure.
+
 ## Data And Artifacts
 
 This repository stores code, configs, protocols, and lightweight metadata only. It does not store source NetCDF files, generated HDF5 datasets, checkpoints, or rollout outputs.

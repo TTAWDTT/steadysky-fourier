@@ -33,7 +33,7 @@ the model-induced-state distribution problem.
 | Arm | Run number | New mechanism | Primary question |
 |---|---|---|---|
 | Phase 7A Long distribution rollout | `phase7_long_distribution_rollout_edim384` | Phase 6B distribution loss with a longer rollout curriculum | Does matching the model-induced distribution over longer train rollouts reduce 120-month drift and damping? |
-| Phase 7B Anchored distribution rollout | `phase7_anchored_distribution_rollout_edim384` | Phase 6B distribution loss plus a stronger short-lead pointwise/phase anchor | Can we keep Phase 6B's amplitude recovery while improving Nino3.4 phase and regional RMSE? |
+| Phase 7B Anchored distribution rollout | `phase7_anchored_distribution_rollout_edim384` | Phase 6B distribution loss plus a stronger short-lead pointwise field anchor | Can we keep Phase 6B's amplitude recovery while improving Nino3.4 phase and regional RMSE? |
 
 Both arms keep:
 
@@ -79,23 +79,22 @@ The key idea is not to use a separate raw teacher as the main mechanism. The
 anchor should be internal to the supervised rollout objective:
 
 ```text
-L = L_short_field
+L = L_field
   + lambda_dist L_feature_distribution
-  + lambda_tendency L_short_tendency
+  + lambda_anchor L_short_lead_field
 ```
 
 where:
 
-- `L_short_field` keeps the early rollout leads pointwise accurate,
+- `L_field` is the normal multistep field loss,
 - `L_feature_distribution` preserves the Phase 6B invariant-distribution
   benefit,
-- `L_short_tendency` compares short-lead changes, especially for `tos`/`zos`,
-  so the model is penalized for recovering amplitude with the wrong local
-  tendency.
+- `L_short_lead_field` adds extra weight on the first few rollout leads so the
+  model is penalized for recovering amplitude with poor local phase.
 
 Recommended schedule:
 
-| Stage | Epochs | Rollout steps | Distribution weight | Tendency weight |
+| Stage | Epochs | Rollout steps | Distribution weight | Short-lead anchor weight |
 |---:|---:|---:|---:|---:|
 | 1 | 10 | 1 | 0 | 0 |
 | 2 | 15 | 1 | 0 | 0 |
