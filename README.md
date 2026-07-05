@@ -224,6 +224,10 @@ metrics and did not improve Nino3.4 trajectory skill.
 See `docs/phase7_distribution_rollout_results.md` for the full table,
 diagnostic figures, and Phase 8 consequence.
 
+The next locked direction is in `docs/phase8_invariant_rollout_plan.md`: keep
+Phase 6B's distribution-level benefit, but constrain slow drift and broad
+spectral shape rather than adding more short-lead pointwise pressure.
+
 ## Data And Artifacts
 
 This repository stores code, configs, protocols, and lightweight metadata only. It does not store source NetCDF files, generated HDF5 datasets, checkpoints, or rollout outputs.
