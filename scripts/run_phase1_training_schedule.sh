@@ -9,7 +9,7 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout|energy_rollout|spectrum_rollout|attractor_rollout|distribution_rollout|long_distribution_rollout|anchored_distribution_rollout [comma_separated_stage_epochs]}"
+ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout|energy_rollout|spectrum_rollout|attractor_rollout|distribution_rollout|long_distribution_rollout|anchored_distribution_rollout|drift_distribution_rollout|spectral_distribution_rollout [comma_separated_stage_epochs]}"
 STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
 EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-0}"
 EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
@@ -34,8 +34,8 @@ if ! [[ "${START_STAGE}" =~ ^[1-9][0-9]*$ ]]; then
   exit 7
 fi
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" && "${ARM}" != "energy_rollout" && "${ARM}" != "spectrum_rollout" && "${ARM}" != "attractor_rollout" && "${ARM}" != "distribution_rollout" && "${ARM}" != "long_distribution_rollout" && "${ARM}" != "anchored_distribution_rollout" ]]; then
-  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, residual_rollout, energy_rollout, spectrum_rollout, attractor_rollout, distribution_rollout, long_distribution_rollout, or anchored_distribution_rollout" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" && "${ARM}" != "energy_rollout" && "${ARM}" != "spectrum_rollout" && "${ARM}" != "attractor_rollout" && "${ARM}" != "distribution_rollout" && "${ARM}" != "long_distribution_rollout" && "${ARM}" != "anchored_distribution_rollout" && "${ARM}" != "drift_distribution_rollout" && "${ARM}" != "spectral_distribution_rollout" ]]; then
+  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, residual_rollout, energy_rollout, spectrum_rollout, attractor_rollout, distribution_rollout, long_distribution_rollout, anchored_distribution_rollout, drift_distribution_rollout, or spectral_distribution_rollout" >&2
   exit 2
 fi
 
@@ -78,6 +78,12 @@ elif [[ "${ARM}" == "distribution_rollout" ]]; then
 elif [[ "${ARM}" == "long_distribution_rollout" ]]; then
   STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
   RUN_NUM="phase7_long_distribution_rollout_edim384"
+elif [[ "${ARM}" == "drift_distribution_rollout" ]]; then
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase8_drift_distribution_rollout_edim384"
+elif [[ "${ARM}" == "spectral_distribution_rollout" ]]; then
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase8_spectral_distribution_rollout_edim384"
 else
   STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
   RUN_NUM="phase7_anchored_distribution_rollout_edim384"
@@ -89,7 +95,7 @@ if [[ "${ARM}" == "long_distribution_rollout" ]]; then
 elif [[ "${ARM}" == "anchored_distribution_rollout" ]]; then
   MULTISTEP_COUNTS=(1 1 3 6 12 12)
   STAGE_BATCH_SIZES=(16 16 8 4 2 2)
-elif [[ "${ARM}" == "residual_rollout" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" ]]; then
+elif [[ "${ARM}" == "residual_rollout" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" || "${ARM}" == "drift_distribution_rollout" || "${ARM}" == "spectral_distribution_rollout" ]]; then
   MULTISTEP_COUNTS=(1 1 1 3 6 12)
   STAGE_BATCH_SIZES=(16 16 16 8 4 2)
 else
@@ -118,7 +124,7 @@ cd "${MAKANI}"
 RUN_DIR="${ROOT}/runs/${CONFIG_NAME}/${RUN_NUM}"
 mkdir -p "${RUN_DIR}/training_checkpoints" "${ROOT}/logs"
 
-if [[ "${ARM}" == "freq_loss" || "${ARM}" == "freq_anom" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" || "${ARM}" == "long_distribution_rollout" || "${ARM}" == "anchored_distribution_rollout" ]]; then
+if [[ "${ARM}" == "freq_loss" || "${ARM}" == "freq_anom" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" || "${ARM}" == "long_distribution_rollout" || "${ARM}" == "anchored_distribution_rollout" || "${ARM}" == "drift_distribution_rollout" || "${ARM}" == "spectral_distribution_rollout" ]]; then
   "${PYTHON}" "${REPO}/scripts/install_makani_phase3_losses.py" --makani-root "${MAKANI}"
 fi
 
@@ -162,7 +168,7 @@ txt = txt.replace("${STEADYSKY_WORK}", root)
 txt = txt.replace(f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_raw"', f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_current_{arm}"')
 txt = txt.replace("max_epochs: 300", f"max_epochs: {stage_end_epoch}")
 txt = txt.replace("n_train_samples_per_epoch: 1583", f"n_train_samples_per_epoch: {train_samples_per_epoch}")
-if arm in {"residual_rollout", "energy_rollout", "spectrum_rollout", "attractor_rollout", "distribution_rollout", "long_distribution_rollout", "anchored_distribution_rollout"}:
+if arm in {"residual_rollout", "energy_rollout", "spectrum_rollout", "attractor_rollout", "distribution_rollout", "long_distribution_rollout", "anchored_distribution_rollout", "drift_distribution_rollout", "spectral_distribution_rollout"}:
     txt = txt.replace('    pretrained: !!bool False', '    pretrained: !!bool False\n    load_loss: !!bool False')
 if arm in {"freq_loss", "freq_anom"}:
     # Stage-wise frequency curriculum. Inputs and targets remain raw; only
@@ -314,6 +320,64 @@ if arm == "distribution_rollout" and int(stage_index) >= 4:
             include_lowpass_mean: !!bool True
             bandwidth: 1.0
 '''
+    original = '''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        parameters:
+            squared: !!bool True
+'''
+    if original not in txt:
+        raise RuntimeError("Could not find base loss block to replace")
+    txt = txt.replace(original, base_loss)
+if arm in {"drift_distribution_rollout", "spectral_distribution_rollout"} and int(stage_index) >= 4:
+    # Phase 8 keeps the successful Phase 6B distribution rollout envelope and
+    # adds exactly one weak invariant term. This avoids Phase 7's stronger
+    # rollout exposure and short-lead pointwise anchoring.
+    regularizer_weights = {
+        4: 0.02,
+        5: 0.035,
+        6: 0.05,
+    }[int(stage_index)]
+    invariant_weights = {
+        4: 0.005,
+        5: 0.010,
+        6: 0.015,
+    }[int(stage_index)]
+    invariant_type = "spatial_mean_drift" if arm == "drift_distribution_rollout" else "spectral_shape"
+    invariant_parameters = ""
+    if arm == "spectral_distribution_rollout":
+        invariant_parameters = """        parameters:
+            low_weight: 1.0
+            mid_weight: 1.0
+            high_weight: 0.25
+            low_max: 5
+            mid_max: 20
+            remove_spatial_mean: !!bool True
+"""
+    else:
+        invariant_parameters = """        parameters:
+            eps: 1.0e-8
+"""
+    base_loss = f'''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        relative_weight: 1.0
+        parameters:
+            squared: !!bool True
+    -   type: "feature_mmd"
+        channel_weights: "constant"
+        relative_weight: {regularizer_weights}
+        parameters:
+            include_mean: !!bool True
+            include_log_variance: !!bool True
+            include_lowpass_mean: !!bool True
+            bandwidth: 1.0
+    -   type: "{invariant_type}"
+        channel_weights: "constant"
+        relative_weight: {invariant_weights}
+{invariant_parameters}'''
     original = '''    losses:
     -   type: "l2"
         channel_weights: "constant"

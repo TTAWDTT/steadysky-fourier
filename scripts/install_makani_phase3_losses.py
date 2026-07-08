@@ -399,6 +399,142 @@ class ShortLeadLpLoss(GeometricBaseLoss):
             else:
                 raise RuntimeError(f"ShortLeadLpLoss got {loss.shape[1]} loss channels but {weights.numel()} lead weights")
         return loss * weights[None, :]
+
+
+class SpatialMeanDriftLoss(GeometricBaseLoss):
+    """Weak invariant penalty for slow spatial-mean drift.
+
+    This loss deliberately ignores pointwise phase. It only compares the
+    weighted spatial mean of prediction and target for each example/channel.
+    """
+
+    def __init__(
+        self,
+        img_shape: Tuple[int, int],
+        crop_shape: Tuple[int, int],
+        crop_offset: Tuple[int, int],
+        channel_names: List[str],
+        grid_type: str,
+        spatial_distributed: Optional[bool] = False,
+        eps: float = 1.0e-8,
+        **kwargs,
+    ):
+        super().__init__(
+            img_shape=img_shape,
+            crop_shape=crop_shape,
+            crop_offset=crop_offset,
+            channel_names=channel_names,
+            grid_type=grid_type,
+            spatial_distributed=spatial_distributed,
+        )
+        self.eps = float(eps)
+
+    def _weighted_mean(self, x: torch.Tensor, wgt: Optional[torch.Tensor]) -> torch.Tensor:
+        if wgt is None:
+            return x.mean(dim=(-2, -1))
+        weights = wgt
+        while weights.ndim < x.ndim:
+            weights = weights.unsqueeze(0)
+        denom = torch.clamp(weights.sum(dim=(-2, -1)), min=self.eps)
+        return (x * weights).sum(dim=(-2, -1)) / denom
+
+    def forward(self, prd: torch.Tensor, tar: torch.Tensor, wgt: Optional[torch.Tensor] = None, **kwargs) -> torch.Tensor:
+        pred_mean = self._weighted_mean(prd, wgt)
+        targ_mean = self._weighted_mean(tar, wgt)
+        return (pred_mean - targ_mean).square()
+
+
+class SpectralShapeLoss(GeometricBaseLoss):
+    """Match broad normalized spectral shape without prescribing phase.
+
+    Unlike FourierBandLpLoss and SpectralEnergyMatchLoss, this compares only
+    the low/mid/high energy proportions. Absolute energy and phase are left to
+    the field loss and distribution loss.
+    """
+
+    def __init__(
+        self,
+        img_shape: Tuple[int, int],
+        crop_shape: Tuple[int, int],
+        crop_offset: Tuple[int, int],
+        channel_names: List[str],
+        grid_type: str,
+        low_weight: float = 1.0,
+        mid_weight: float = 1.0,
+        high_weight: float = 0.25,
+        low_max: float = 5.0,
+        mid_max: float = 20.0,
+        remove_spatial_mean: bool = True,
+        spatial_distributed: Optional[bool] = False,
+        eps: float = 1.0e-8,
+        **kwargs,
+    ):
+        super().__init__(
+            img_shape=img_shape,
+            crop_shape=crop_shape,
+            crop_offset=crop_offset,
+            channel_names=channel_names,
+            grid_type=grid_type,
+            spatial_distributed=spatial_distributed,
+        )
+        self.low_weight = float(low_weight)
+        self.mid_weight = float(mid_weight)
+        self.high_weight = float(high_weight)
+        self.low_max = float(low_max)
+        self.mid_max = float(mid_max)
+        self.remove_spatial_mean = bool(remove_spatial_mean)
+        self.eps = float(eps)
+        self.register_buffer("band_masks", torch.empty(0), persistent=False)
+        self.register_buffer("band_weights", torch.empty(0), persistent=False)
+
+    def _bands(self, height: int, width: int, device: torch.device, dtype: torch.dtype):
+        expected = (3, height, width // 2 + 1)
+        if self.band_masks.numel() and tuple(self.band_masks.shape) == expected:
+            return self.band_masks.to(device=device, dtype=torch.bool), self.band_weights.to(device=device, dtype=dtype)
+
+        ky = torch.fft.fftfreq(height, device=device)[:, None] * height
+        kx = torch.fft.rfftfreq(width, device=device)[None, :] * width
+        kr = torch.sqrt(kx * kx + ky * ky)
+        masks = torch.stack(
+            [
+                kr <= self.low_max,
+                (kr > self.low_max) & (kr <= self.mid_max),
+                kr > self.mid_max,
+            ],
+            dim=0,
+        )
+        weights = torch.as_tensor([self.low_weight, self.mid_weight, self.high_weight], device=device, dtype=dtype)
+        self.band_masks = masks.detach()
+        self.band_weights = weights.detach()
+        return masks, weights
+
+    def _shape(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        if self.remove_spatial_mean:
+            x = x - x.mean(dim=(-2, -1), keepdim=True)
+        fft_dtype = torch.float32 if x.dtype in (torch.float16, torch.bfloat16) else x.dtype
+        x = x.to(dtype=fft_dtype)
+        height, width = x.shape[-2:]
+        masks, weights = self._bands(height, width, x.device, fft_dtype)
+        coeff = torch.fft.rfft2(x, dim=(-2, -1), norm="ortho")
+        power = coeff.real.square() + coeff.imag.square()
+        energies = []
+        for mask in masks:
+            denom = torch.clamp(mask.sum().to(dtype=fft_dtype), min=1.0)
+            energies.append((power * mask[None, None]).sum(dim=(-2, -1)) / denom)
+        energy = torch.stack(energies, dim=-1)
+        shape = energy / torch.clamp(energy.sum(dim=-1, keepdim=True), min=self.eps)
+        return torch.log(shape + self.eps), weights
+
+    def forward(self, prd: torch.Tensor, tar: torch.Tensor, wgt: Optional[torch.Tensor] = None, **kwargs) -> torch.Tensor:
+        pred_shape, weights = self._shape(prd)
+        targ_shape, _ = self._shape(tar)
+        diff = (pred_shape - targ_shape).square() * weights[None, None, :]
+        denom = torch.clamp(weights.sum(), min=self.eps)
+        loss = diff.sum(dim=-1) / denom
+        if wgt is not None:
+            channel_weight = wgt.mean(dim=(-2, -1))
+            loss = loss * channel_weight
+        return loss
 '''
 
 
@@ -424,6 +560,10 @@ def install(makani_root: Path) -> None:
         extra_imports.append("FeatureMMDLoss")
     if "ShortLeadLpLoss" not in registry_text:
         extra_imports.append("ShortLeadLpLoss")
+    if "SpatialMeanDriftLoss" not in registry_text:
+        extra_imports.append("SpatialMeanDriftLoss")
+    if "SpectralShapeLoss" not in registry_text:
+        extra_imports.append("SpectralShapeLoss")
     if extra_imports:
         registry_text = registry_text.replace(marker, marker + f"from .losses import {', '.join(extra_imports)}\n")
 
@@ -441,6 +581,10 @@ def install(makani_root: Path) -> None:
         registry_text = registry_text.replace(map_insert, map_insert + '    "feature_mmd": FeatureMMDLoss,\n')
     if '"short_lead_l2": ShortLeadLpLoss' not in registry_text:
         registry_text = registry_text.replace(map_insert, map_insert + '    "short_lead_l2": ShortLeadLpLoss,\n')
+    if '"spatial_mean_drift": SpatialMeanDriftLoss' not in registry_text:
+        registry_text = registry_text.replace(map_insert, map_insert + '    "spatial_mean_drift": SpatialMeanDriftLoss,\n')
+    if '"spectral_shape": SpectralShapeLoss' not in registry_text:
+        registry_text = registry_text.replace(map_insert, map_insert + '    "spectral_shape": SpectralShapeLoss,\n')
     registry.write_text(registry_text, encoding="utf-8")
 
     init_text = init_file.read_text(encoding="utf-8")
@@ -461,6 +605,14 @@ def install(makani_root: Path) -> None:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
     init_text = init_file.read_text(encoding="utf-8")
     init_line = "from .steadysky_fourier_loss import ShortLeadLpLoss\n"
+    if init_line not in init_text:
+        init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
+    init_text = init_file.read_text(encoding="utf-8")
+    init_line = "from .steadysky_fourier_loss import SpatialMeanDriftLoss\n"
+    if init_line not in init_text:
+        init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
+    init_text = init_file.read_text(encoding="utf-8")
+    init_line = "from .steadysky_fourier_loss import SpectralShapeLoss\n"
     if init_line not in init_text:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
 
