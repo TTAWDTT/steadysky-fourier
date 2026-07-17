@@ -1,57 +1,48 @@
-# Phase 6B Distribution Rollout Method
+# Phase 6B 分布 Rollout 方法说明
 
-Date: 2026-07-17
+日期：2026-07-17
 
-## Position in the Research
+## 研究定位
 
-Phase 6B is the current best-performing method and should be treated as the new
-main line of the project.
+Phase 6B 是目前实验中表现最好的方法，也应该被视为本项目新的主线。
 
-The original idea was Fourier layerwise data injection: teach the model slow
-low-frequency structure first, then progressively add higher-frequency
-components. That idea produced useful stabilization, but the experiments showed
-an important limitation: low-frequency-first training can also make the model
-too smooth and damped.
+最初的想法是“傅里叶逐层数据注入”：先让模型学习缓慢的低频结构，再逐步加入更高频的成分。这个想法确实带来了稳定化效果，但后续实验也暴露了一个关键问题：低频优先训练会让模型更平稳，却也可能让预测变得过度平滑、异常振幅被压低、长期相位技巧不足。
 
-Phase 6B shifts the core claim:
+Phase 6B 将核心问题从“如何按频率注入数据”转向：
 
-> Long-rollout stability is a closed-loop distribution problem. A model should
-> not only minimize one-step field error; its own autoregressive states should
-> remain close to the real system's state distribution.
+> 长期 rollout 稳定性本质上是一个闭环分布问题。模型不应该只最小化一步场误差；它在自回归预测中生成的状态，也应该持续停留在真实系统的状态分布附近。
 
-## Method Summary
+换句话说，Phase 6B 关注的是模型自己的闭环轨迹会不会跑到错误吸引子上。
 
-Phase 6B combines three components:
+## 方法概述
+
+Phase 6B 由三个组件组成：
 
 ```text
-residual-soft data curriculum
+residual-soft 数据课程
 + scheduled rollout exposure
 + batch-level feature-MMD distribution matching
 ```
 
-It does not change the model architecture. The improvement is purely in the
-training/data-injection objective.
+它不改变模型架构，改进完全来自训练方式、数据注入方式和损失函数。
 
-## Fixed Model and Data Setup
+## 固定模型与数据设置
 
-| Item | Value |
+| 项目 | 设置 |
 |---|---|
-| Architecture | Makani SFNO `sfno_walker_1deg_edim384_layers8` |
-| Trainable parameters | 147,776,272 |
-| Variables | `tauu`, `tauv`, `tos`, `zos` |
-| Data family | four-variable Walker/ocean 1-degree dataset |
-| Training length | 150 epochs |
-| Formal evaluation | 120-month autoregressive rollout |
-| Main metrics | Makani `tos` RMSE, ACC, CRPS |
+| 架构 | Makani SFNO `sfno_walker_1deg_edim384_layers8` |
+| 可训练参数量 | 147,776,272 |
+| 变量 | `tauu`, `tauv`, `tos`, `zos` |
+| 数据 | 四变量 Walker/ocean 1-degree 数据 |
+| 训练长度 | 150 epochs |
+| 正式评测 | 120-month autoregressive rollout |
+| 主要指标 | Makani `tos` RMSE, ACC, CRPS |
 
-## Training Schedule
+## 训练日程
 
-Phase 6B keeps the residual-soft curriculum introduced before Phase 6. The data
-starts from easier low-pass/residual-soft targets, then returns to raw data.
-The key difference from earlier phases is that rollout exposure grows in the
-later stages.
+Phase 6B 沿用了 Phase 6 之前引入的 residual-soft curriculum。训练数据先从更容易的低通/软残差目标开始，再逐步回到 raw data。和更早阶段相比，Phase 6B 的关键区别是：后期显式加入越来越长的 rollout exposure。
 
-| Stage | Training data | Epochs | Multistep count | Batch size |
+| Stage | 训练数据 | Epochs | Multistep count | Batch size |
 |---|---|---:|---:|---:|
 | 1 | `train_residual_soft_lp004_l020` | 10 | 1 | 16 |
 | 2 | `train_residual_soft_lp008_l030` | 15 | 1 | 16 |
@@ -60,22 +51,21 @@ later stages.
 | 5 | `train_residual_soft_lp064_l080` | 35 | 6 | 4 |
 | 6 | `train_raw` | 45 | 12 | 2 |
 
-The stage epoch counts are cumulative in the Makani config, but the actual
-incremental budget is:
+Makani 配置中使用的是累计 epoch，但实际增量训练预算是：
 
 ```text
 10 + 15 + 20 + 25 + 35 + 45 = 150 epochs
 ```
 
-## Loss Function
+## 损失函数
 
-For stages 1-3, Phase 6B uses the normal Makani field loss:
+在 stage 1-3，Phase 6B 使用标准 Makani 场损失：
 
 ```text
 L = L_field
 ```
 
-For stages 4-6, Phase 6B adds a weak feature-MMD distribution loss:
+在 stage 4-6，Phase 6B 加入一个较弱的 feature-MMD 分布损失：
 
 ```text
 L = L_field + lambda_mmd L_feature_mmd
@@ -87,52 +77,42 @@ L = L_field + lambda_mmd L_feature_mmd
 | 5 | 0.035 |
 | 6 | 0.050 |
 
-`L_field` is the standard Makani L2 field loss with constant channel weights and
-temperature-difference normalization.
+其中 `L_field` 是标准 Makani L2 field loss，使用 constant channel weights 和 temperature-difference normalization。
 
-## What Feature-MMD Measures
+## Feature-MMD 在衡量什么
 
-The MMD loss compares a batch of predicted rollout states with a batch of target
-states. It does not force every predicted sample to exactly match its paired
-future. Instead, it asks whether the predicted batch and target batch look like
-they were drawn from similar coarse state distributions.
+MMD loss 比较的是一批预测 rollout 状态和一批真实目标状态。它并不强迫每一个预测样本都精确匹配对应的未来样本，而是判断：
 
-The feature vector contains:
+> 预测 batch 和真实 batch 是否像是来自相似的粗粒度状态分布。
 
-| Feature | Role |
+Feature vector 包括：
+
+| 特征 | 作用 |
 |---|---|
-| Field mean | Controls large-scale state location |
-| Log variance | Penalizes variance collapse and over-smoothing |
-| Low-pass mean | Preserves coarse spatial structure |
-| RBF MMD kernel | Matches batch distributions rather than individual trajectories |
+| Field mean | 控制大尺度状态位置，避免整体状态漂移过远 |
+| Log variance | 惩罚方差塌缩和过度平滑 |
+| Low-pass mean | 保留粗尺度空间结构 |
+| RBF MMD kernel | 匹配 batch 分布，而不是逐样本轨迹 |
 
-The implementation normalizes feature dimensions inside the batch before
-computing the RBF MMD. This keeps one feature family from dominating simply due
-to scale.
+实现中会在 batch 内对 feature 维度做归一化，再计算 RBF MMD。这样可以避免某一类特征仅仅因为数值尺度更大就主导整个损失。
 
-## Why It Works Better Than Pure Fourier Curriculum
+## 为什么它比纯傅里叶课程更有效
 
-Pure Fourier curriculum teaches low-frequency structure early. That helps
-stability, but it can also teach a low-energy attractor: the model remains calm,
-but anomalies become too smooth and phase skill remains weak.
+纯 Fourier curriculum 先教模型低频结构。这个过程有助于稳定，但也可能让模型学到一个低能量吸引子：模型不容易爆炸，却会变得过度平滑，异常被压低，长期相位技巧仍然弱。
 
-Phase 6B attacks the later failure mode directly:
+Phase 6B 直接针对这个后续失败模式：
 
-1. **Rollout exposure** makes training see model-generated states, not only
-   teacher-forced one-step states.
-2. **Distribution matching** makes collapsed or unrealistic rollout batches
-   expensive.
-3. **Batch-level matching** avoids over-penalizing long-lead phase shifts, which
-   are expected in long chaotic or climate-like rollouts.
+1. **Rollout exposure** 让模型在训练时见到自己生成的状态，而不仅仅是 teacher-forced 的一步状态。
+2. **Distribution matching** 让塌缩的、过度平滑的、不真实的 rollout batch 变得有代价。
+3. **Batch-level matching** 避免过度惩罚长期相位偏移，因为在长期混沌或气候式预测中，逐点未来本来就很难严格对齐。
 
-This is the important conceptual move:
+这里最重要的概念转变是：
 
-> The target is not exact long-lead trajectory matching. The target is keeping
-> the model-induced closed-loop distribution near the real data distribution.
+> 目标不是精确命中长期逐点轨迹，而是让模型诱导出的闭环分布持续接近真实数据分布。
 
-## Formal Result
+## 正式结果
 
-Phase 6B is currently the best formal 120-month result.
+Phase 6B 是目前最好的正式 120-month 结果。
 
 | Arm | 120-month `tos` RMSE | 120-month `tos` ACC | 120-month `tos` CRPS |
 |---|---:|---:|---:|
@@ -141,57 +121,57 @@ Phase 6B is currently the best formal 120-month result.
 | Phase 4 residual+rollout | 0.7416 | 9.3691 | 0.4900 |
 | **Phase 6B distribution rollout** | **0.7375** | **9.4922** | **0.4818** |
 
-Relative to raw baseline:
+相对 raw baseline：
 
-| Metric | Change |
+| 指标 | 变化 |
 |---|---:|
 | `tos` RMSE | -39.2% |
 | `tos` CRPS | -43.5% |
 | `tos` ACC | +47.0% relative improvement |
 
-The gain over Phase 4 is smaller but important: Phase 4 already found strong
-stability through rollout exposure, while Phase 6B improves the distributional
-realism of that stable rollout.
+Phase 6B 相比 Phase 4 的 RMSE 提升不大，但这个提升仍然重要：Phase 4 已经通过 rollout exposure 找到了强稳定性，而 Phase 6B 在此基础上进一步改善了稳定 rollout 的分布真实性。
 
-## What Phase 6B Does Not Solve Yet
+## Phase 6B 还没有解决什么
 
-Phase 6B should not be oversold. It is the best current mechanism, not a final
-solution.
+Phase 6B 不应该被过度包装。它是目前最好的机制，但不是最终答案。
 
-Known limitations:
+已知限制包括：
 
-| Limitation | Meaning |
+| 限制 | 含义 |
 |---|---|
-| Global features are coarse | Mean/variance/low-pass features may miss regional structure |
-| Long-lead phase skill remains uncertain | Distribution matching does not guarantee ENSO/Nino3.4 phase correctness |
-| Single architecture so far | Evidence is strongest for this SFNO setup only |
-| Single formal data family | Not yet a full ERA5-style benchmark |
-| No multi-seed uncertainty yet | We do not know run-to-run variance |
+| 全局特征仍然粗糙 | mean/variance/low-pass 特征可能漏掉区域结构 |
+| 长期相位技巧仍不确定 | 分布匹配不保证 ENSO/Nino3.4 相位正确 |
+| 目前主要是单架构证据 | 证据最强的是当前 SFNO 设置 |
+| 目前是单一正式数据族 | 还不是完整 ERA5 风格 benchmark |
+| 还没有 multi-seed 不确定性 | 仍不知道 run-to-run variance |
 
-## Why Phase 9 Starts From Phase 6B
+## 为什么 Phase 9 从 Phase 6B 出发
 
-Phase 9 keeps the Phase 6B training envelope and changes only the feature map
-inside MMD.
+Phase 9 保持 Phase 6B 的训练包络，只改变 MMD 内部的 feature map。
 
-| Phase | Change from Phase 6B |
+| Phase | 相比 Phase 6B 的变化 |
 |---|---|
-| Phase 9A | Add coarse regional means to MMD features |
-| Phase 9B | Add regional means plus cross-channel covariance features |
+| Phase 9A | 在 MMD feature 中加入粗区域均值 |
+| Phase 9B | 加入区域均值，并额外加入跨变量 covariance feature |
 
-This is a clean continuation because it tests whether the best current idea,
-closed-loop distribution matching, becomes stronger when the distribution
-features better represent regional structure and variable coupling.
+这是一个干净的延续实验：它检验“闭环分布匹配”这个当前最强机制，是否会因为更好地表达区域结构和变量耦合而进一步增强。
 
-## Short Name
+## 建议名称
 
-A good working name for the Phase 6B method is:
+Phase 6B 的工作名称可以是：
 
 ```text
 Closed-loop Attractor Distribution Matching
 ```
 
-or, more concretely:
+更具体一点，也可以叫：
 
 ```text
 Rollout Feature-MMD Training
+```
+
+中文可以暂称为：
+
+```text
+闭环吸引子分布匹配训练
 ```
