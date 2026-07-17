@@ -8,15 +8,15 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG_SOURCE="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_long_rollout_eval.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout|energy_rollout|spectrum_rollout|attractor_rollout|distribution_rollout|long_distribution_rollout|long_distribution_rollout_best|anchored_distribution_rollout|drift_distribution_rollout|spectral_distribution_rollout [rollout_months]}"
+ARM="${1:?usage: run_phase1_long_rollout_eval.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout|energy_rollout|spectrum_rollout|attractor_rollout|distribution_rollout|long_distribution_rollout|long_distribution_rollout_best|anchored_distribution_rollout|drift_distribution_rollout|spectral_distribution_rollout|regional_distribution_rollout|coupled_regional_distribution_rollout [rollout_months]}"
 ROLLOUT_MONTHS="${2:-120}"
 NPROC_PER_NODE="${STEADYSKY_EVAL_NPROC_PER_NODE:-1}"
 BATCH_SIZE="${STEADYSKY_EVAL_BATCH_SIZE:-1}"
 DATE_STEP_HOURS="${STEADYSKY_EVAL_DATE_STEP_HOURS:-8760}"
 OUTPUT_MEMORY_BUFFER_SIZE="${STEADYSKY_EVAL_OUTPUT_MEMORY_BUFFER_SIZE:-0}"
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" && "${ARM}" != "energy_rollout" && "${ARM}" != "spectrum_rollout" && "${ARM}" != "attractor_rollout" && "${ARM}" != "distribution_rollout" && "${ARM}" != "long_distribution_rollout" && "${ARM}" != "long_distribution_rollout_best" && "${ARM}" != "anchored_distribution_rollout" && "${ARM}" != "drift_distribution_rollout" && "${ARM}" != "spectral_distribution_rollout" ]]; then
-  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, residual_rollout, energy_rollout, spectrum_rollout, attractor_rollout, distribution_rollout, long_distribution_rollout, long_distribution_rollout_best, anchored_distribution_rollout, drift_distribution_rollout, or spectral_distribution_rollout" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" && "${ARM}" != "energy_rollout" && "${ARM}" != "spectrum_rollout" && "${ARM}" != "attractor_rollout" && "${ARM}" != "distribution_rollout" && "${ARM}" != "long_distribution_rollout" && "${ARM}" != "long_distribution_rollout_best" && "${ARM}" != "anchored_distribution_rollout" && "${ARM}" != "drift_distribution_rollout" && "${ARM}" != "spectral_distribution_rollout" && "${ARM}" != "regional_distribution_rollout" && "${ARM}" != "coupled_regional_distribution_rollout" ]]; then
+  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, residual_rollout, energy_rollout, spectrum_rollout, attractor_rollout, distribution_rollout, long_distribution_rollout, long_distribution_rollout_best, anchored_distribution_rollout, drift_distribution_rollout, spectral_distribution_rollout, regional_distribution_rollout, or coupled_regional_distribution_rollout" >&2
   exit 2
 fi
 
@@ -56,6 +56,8 @@ elif [[ "${ARM}" == "long_distribution_rollout_best" ]]; then
   RUN_NUM="phase7_long_distribution_rollout_best_edim384"
 elif [[ "${ARM}" == "drift_distribution_rollout" || "${ARM}" == "spectral_distribution_rollout" ]]; then
   RUN_NUM="phase8_${ARM}_edim384"
+elif [[ "${ARM}" == "regional_distribution_rollout" || "${ARM}" == "coupled_regional_distribution_rollout" ]]; then
+  RUN_NUM="phase9_${ARM}_edim384"
 else
   RUN_NUM="phase3_${ARM}_edim384"
 fi
