@@ -535,7 +535,11 @@ class LatentFeatureMMDLoss(FeatureMMDLoss):
         z = model.encode(x_for_encoder)
         feats = []
         if self.include_global_stats:
-            feats.append(super()._features(x_for_encoder))
+            mean = x_for_encoder.mean(dim=(-2, -1))
+            centered = x_for_encoder - mean[..., None, None]
+            var = centered.square().mean(dim=(-2, -1))
+            lowpass = torch.nn.functional.avg_pool2d(x_for_encoder, kernel_size=12, stride=12)
+            feats.extend([mean, torch.log(var + self.eps), lowpass.flatten(start_dim=1)])
         if self.include_latent_mean:
             feats.append(z.mean(dim=(-2, -1)))
         if self.include_latent_std:
