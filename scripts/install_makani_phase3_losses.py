@@ -340,6 +340,71 @@ class FeatureMMDLoss(GeometricBaseLoss):
         return mmd.expand(prd.shape[0], prd.shape[1])
 
 
+class RegionalFeatureMMDLoss(FeatureMMDLoss):
+    """Batch MMD over regional and optional cross-channel rollout features.
+
+    Phase 6B's global feature MMD was the best current mechanism, but global
+    moments can miss basin-scale structure. This variant keeps the same MMD
+    contract while adding coarse latitude/longitude regional means and, when
+    requested, low-order cross-channel covariance features.
+    """
+
+    def __init__(
+        self,
+        img_shape: Tuple[int, int],
+        crop_shape: Tuple[int, int],
+        crop_offset: Tuple[int, int],
+        channel_names: List[str],
+        grid_type: str,
+        include_mean: bool = True,
+        include_log_variance: bool = True,
+        include_lowpass_mean: bool = True,
+        include_regional_mean: bool = True,
+        include_cross_channel_covariance: bool = False,
+        num_lat_bands: int = 4,
+        num_lon_bands: int = 4,
+        bandwidth: float = 1.0,
+        spatial_distributed: Optional[bool] = False,
+        eps: float = 1.0e-8,
+        **kwargs,
+    ):
+        super().__init__(
+            img_shape=img_shape,
+            crop_shape=crop_shape,
+            crop_offset=crop_offset,
+            channel_names=channel_names,
+            grid_type=grid_type,
+            include_mean=include_mean,
+            include_log_variance=include_log_variance,
+            include_lowpass_mean=include_lowpass_mean,
+            bandwidth=bandwidth,
+            spatial_distributed=spatial_distributed,
+            eps=eps,
+        )
+        self.include_regional_mean = bool(include_regional_mean)
+        self.include_cross_channel_covariance = bool(include_cross_channel_covariance)
+        self.num_lat_bands = int(num_lat_bands)
+        self.num_lon_bands = int(num_lon_bands)
+
+    def _features(self, x: torch.Tensor) -> torch.Tensor:
+        feats = [super()._features(x)]
+        if self.include_regional_mean:
+            pooled = torch.nn.functional.adaptive_avg_pool2d(
+                x,
+                output_size=(self.num_lat_bands, self.num_lon_bands),
+            )
+            feats.append(pooled.flatten(start_dim=1))
+        if self.include_cross_channel_covariance:
+            flat = x.flatten(start_dim=2)
+            flat = flat - flat.mean(dim=-1, keepdim=True)
+            cov = flat @ flat.transpose(1, 2)
+            cov = cov / torch.clamp(torch.tensor(flat.shape[-1], device=x.device, dtype=x.dtype), min=1.0)
+            diag = torch.diagonal(cov, dim1=1, dim2=2)
+            cov = cov / torch.sqrt(torch.clamp(diag[:, :, None] * diag[:, None, :], min=self.eps))
+            feats.append(cov.flatten(start_dim=1))
+        return torch.cat(feats, dim=1)
+
+
 class ShortLeadLpLoss(GeometricBaseLoss):
     """Extra pointwise anchor on the first few rollout leads.
 
@@ -558,6 +623,8 @@ def install(makani_root: Path) -> None:
         extra_imports.append("AttractorStatsLoss")
     if "FeatureMMDLoss" not in registry_text:
         extra_imports.append("FeatureMMDLoss")
+    if "RegionalFeatureMMDLoss" not in registry_text:
+        extra_imports.append("RegionalFeatureMMDLoss")
     if "ShortLeadLpLoss" not in registry_text:
         extra_imports.append("ShortLeadLpLoss")
     if "SpatialMeanDriftLoss" not in registry_text:
@@ -579,6 +646,8 @@ def install(makani_root: Path) -> None:
         registry_text = registry_text.replace(map_insert, map_insert + '    "attractor_stats": AttractorStatsLoss,\n')
     if '"feature_mmd": FeatureMMDLoss' not in registry_text:
         registry_text = registry_text.replace(map_insert, map_insert + '    "feature_mmd": FeatureMMDLoss,\n')
+    if '"regional_feature_mmd": RegionalFeatureMMDLoss' not in registry_text:
+        registry_text = registry_text.replace(map_insert, map_insert + '    "regional_feature_mmd": RegionalFeatureMMDLoss,\n')
     if '"short_lead_l2": ShortLeadLpLoss' not in registry_text:
         registry_text = registry_text.replace(map_insert, map_insert + '    "short_lead_l2": ShortLeadLpLoss,\n')
     if '"spatial_mean_drift": SpatialMeanDriftLoss' not in registry_text:
@@ -601,6 +670,10 @@ def install(makani_root: Path) -> None:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
     init_text = init_file.read_text(encoding="utf-8")
     init_line = "from .steadysky_fourier_loss import FeatureMMDLoss\n"
+    if init_line not in init_text:
+        init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
+    init_text = init_file.read_text(encoding="utf-8")
+    init_line = "from .steadysky_fourier_loss import RegionalFeatureMMDLoss\n"
     if init_line not in init_text:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
     init_text = init_file.read_text(encoding="utf-8")
