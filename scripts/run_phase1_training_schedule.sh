@@ -9,7 +9,7 @@ PYTHON="${ROOT}/conda_makani/bin/python"
 CONFIG="${REPO}/configs/sfno_walker_1deg.yaml"
 CONFIG_NAME="sfno_walker_1deg_edim384_layers8"
 
-ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout|energy_rollout|spectrum_rollout|attractor_rollout|distribution_rollout|long_distribution_rollout|anchored_distribution_rollout|drift_distribution_rollout|spectral_distribution_rollout|regional_distribution_rollout|coupled_regional_distribution_rollout [comma_separated_stage_epochs]}"
+ARM="${1:?usage: run_phase1_training_schedule.sh raw|fourier|mixed|residual|freq_loss|freq_anom|residual_soft|residual_rollout|energy_rollout|spectrum_rollout|attractor_rollout|distribution_rollout|long_distribution_rollout|anchored_distribution_rollout|drift_distribution_rollout|spectral_distribution_rollout|regional_distribution_rollout|coupled_regional_distribution_rollout|latent_distribution_rollout|latent_recon_distribution_rollout [comma_separated_stage_epochs]}"
 STAGE_EPOCHS_CSV="${2:-10,15,20,25,35,45}"
 EARLY_STOP_PATIENCE="${STEADYSKY_EARLY_STOP_PATIENCE:-0}"
 EARLY_STOP_MIN_POINTS="${STEADYSKY_EARLY_STOP_MIN_POINTS:-20}"
@@ -34,8 +34,8 @@ if ! [[ "${START_STAGE}" =~ ^[1-9][0-9]*$ ]]; then
   exit 7
 fi
 
-if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" && "${ARM}" != "energy_rollout" && "${ARM}" != "spectrum_rollout" && "${ARM}" != "attractor_rollout" && "${ARM}" != "distribution_rollout" && "${ARM}" != "long_distribution_rollout" && "${ARM}" != "anchored_distribution_rollout" && "${ARM}" != "drift_distribution_rollout" && "${ARM}" != "spectral_distribution_rollout" && "${ARM}" != "regional_distribution_rollout" && "${ARM}" != "coupled_regional_distribution_rollout" ]]; then
-  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, residual_rollout, energy_rollout, spectrum_rollout, attractor_rollout, distribution_rollout, long_distribution_rollout, anchored_distribution_rollout, drift_distribution_rollout, spectral_distribution_rollout, regional_distribution_rollout, or coupled_regional_distribution_rollout" >&2
+if [[ "${ARM}" != "raw" && "${ARM}" != "fourier" && "${ARM}" != "mixed" && "${ARM}" != "residual" && "${ARM}" != "freq_loss" && "${ARM}" != "freq_anom" && "${ARM}" != "residual_soft" && "${ARM}" != "residual_rollout" && "${ARM}" != "energy_rollout" && "${ARM}" != "spectrum_rollout" && "${ARM}" != "attractor_rollout" && "${ARM}" != "distribution_rollout" && "${ARM}" != "long_distribution_rollout" && "${ARM}" != "anchored_distribution_rollout" && "${ARM}" != "drift_distribution_rollout" && "${ARM}" != "spectral_distribution_rollout" && "${ARM}" != "regional_distribution_rollout" && "${ARM}" != "coupled_regional_distribution_rollout" && "${ARM}" != "latent_distribution_rollout" && "${ARM}" != "latent_recon_distribution_rollout" ]]; then
+  echo "ARM must be raw, fourier, mixed, residual, freq_loss, freq_anom, residual_soft, residual_rollout, energy_rollout, spectrum_rollout, attractor_rollout, distribution_rollout, long_distribution_rollout, anchored_distribution_rollout, drift_distribution_rollout, spectral_distribution_rollout, regional_distribution_rollout, coupled_regional_distribution_rollout, latent_distribution_rollout, or latent_recon_distribution_rollout" >&2
   exit 2
 fi
 
@@ -90,6 +90,12 @@ elif [[ "${ARM}" == "regional_distribution_rollout" ]]; then
 elif [[ "${ARM}" == "coupled_regional_distribution_rollout" ]]; then
   STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
   RUN_NUM="phase9_coupled_regional_distribution_rollout_edim384"
+elif [[ "${ARM}" == "latent_distribution_rollout" ]]; then
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase10_latent_distribution_rollout_edim384"
+elif [[ "${ARM}" == "latent_recon_distribution_rollout" ]]; then
+  STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
+  RUN_NUM="phase10_latent_recon_distribution_rollout_edim384"
 else
   STAGES=(train_residual_soft_lp004_l020 train_residual_soft_lp008_l030 train_residual_soft_lp016_l045 train_residual_soft_lp032_l060 train_residual_soft_lp064_l080 train_raw)
   RUN_NUM="phase7_anchored_distribution_rollout_edim384"
@@ -101,7 +107,7 @@ if [[ "${ARM}" == "long_distribution_rollout" ]]; then
 elif [[ "${ARM}" == "anchored_distribution_rollout" ]]; then
   MULTISTEP_COUNTS=(1 1 3 6 12 12)
   STAGE_BATCH_SIZES=(16 16 8 4 2 2)
-elif [[ "${ARM}" == "residual_rollout" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" || "${ARM}" == "drift_distribution_rollout" || "${ARM}" == "spectral_distribution_rollout" || "${ARM}" == "regional_distribution_rollout" || "${ARM}" == "coupled_regional_distribution_rollout" ]]; then
+elif [[ "${ARM}" == "residual_rollout" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" || "${ARM}" == "drift_distribution_rollout" || "${ARM}" == "spectral_distribution_rollout" || "${ARM}" == "regional_distribution_rollout" || "${ARM}" == "coupled_regional_distribution_rollout" || "${ARM}" == "latent_distribution_rollout" || "${ARM}" == "latent_recon_distribution_rollout" ]]; then
   MULTISTEP_COUNTS=(1 1 1 3 6 12)
   STAGE_BATCH_SIZES=(16 16 16 8 4 2)
 else
@@ -130,7 +136,7 @@ cd "${MAKANI}"
 RUN_DIR="${ROOT}/runs/${CONFIG_NAME}/${RUN_NUM}"
 mkdir -p "${RUN_DIR}/training_checkpoints" "${ROOT}/logs"
 
-if [[ "${ARM}" == "freq_loss" || "${ARM}" == "freq_anom" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" || "${ARM}" == "long_distribution_rollout" || "${ARM}" == "anchored_distribution_rollout" || "${ARM}" == "drift_distribution_rollout" || "${ARM}" == "spectral_distribution_rollout" || "${ARM}" == "regional_distribution_rollout" || "${ARM}" == "coupled_regional_distribution_rollout" ]]; then
+if [[ "${ARM}" == "freq_loss" || "${ARM}" == "freq_anom" || "${ARM}" == "energy_rollout" || "${ARM}" == "spectrum_rollout" || "${ARM}" == "attractor_rollout" || "${ARM}" == "distribution_rollout" || "${ARM}" == "long_distribution_rollout" || "${ARM}" == "anchored_distribution_rollout" || "${ARM}" == "drift_distribution_rollout" || "${ARM}" == "spectral_distribution_rollout" || "${ARM}" == "regional_distribution_rollout" || "${ARM}" == "coupled_regional_distribution_rollout" || "${ARM}" == "latent_distribution_rollout" || "${ARM}" == "latent_recon_distribution_rollout" ]]; then
   "${PYTHON}" "${REPO}/scripts/install_makani_phase3_losses.py" --makani-root "${MAKANI}"
 fi
 
@@ -174,7 +180,7 @@ txt = txt.replace("${STEADYSKY_WORK}", root)
 txt = txt.replace(f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_raw"', f'train_data_path: "{root}/data/walker_ocean_1deg_full/train_current_{arm}"')
 txt = txt.replace("max_epochs: 300", f"max_epochs: {stage_end_epoch}")
 txt = txt.replace("n_train_samples_per_epoch: 1583", f"n_train_samples_per_epoch: {train_samples_per_epoch}")
-if arm in {"residual_rollout", "energy_rollout", "spectrum_rollout", "attractor_rollout", "distribution_rollout", "long_distribution_rollout", "anchored_distribution_rollout", "drift_distribution_rollout", "spectral_distribution_rollout", "regional_distribution_rollout", "coupled_regional_distribution_rollout"}:
+if arm in {"residual_rollout", "energy_rollout", "spectrum_rollout", "attractor_rollout", "distribution_rollout", "long_distribution_rollout", "anchored_distribution_rollout", "drift_distribution_rollout", "spectral_distribution_rollout", "regional_distribution_rollout", "coupled_regional_distribution_rollout", "latent_distribution_rollout", "latent_recon_distribution_rollout"}:
     txt = txt.replace('    pretrained: !!bool False', '    pretrained: !!bool False\n    load_loss: !!bool False')
 if arm in {"freq_loss", "freq_anom"}:
     # Stage-wise frequency curriculum. Inputs and targets remain raw; only
@@ -365,6 +371,54 @@ if arm in {"regional_distribution_rollout", "coupled_regional_distribution_rollo
             include_cross_channel_covariance: {include_cov}
             num_lat_bands: 4
             num_lon_bands: 4
+            bandwidth: 1.0
+'''
+    original = '''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        parameters:
+            squared: !!bool True
+'''
+    if original not in txt:
+        raise RuntimeError("Could not find base loss block to replace")
+    txt = txt.replace(original, base_loss)
+if arm in {"latent_distribution_rollout", "latent_recon_distribution_rollout"} and int(stage_index) >= 4:
+    # Phase 10 follows the WLA idea without changing the SFNO architecture:
+    # learn a weather-state latent encoder first, freeze it, then use MMD in
+    # that learned latent space during the same Phase 6B rollout stages.
+    regularizer_weights = {
+        4: 0.02,
+        5: 0.035,
+        6: 0.05,
+    }[int(stage_index)]
+    reconstruction_weight = 0.02 if arm == "latent_recon_distribution_rollout" else 0.0
+    checkpoint_path = os.environ.get("STEADYSKY_WLA_LITE_CKPT", f"{root}/latent/wla_lite/wla_lite_best.pt")
+    if not Path(checkpoint_path).exists():
+        raise RuntimeError(
+            "Missing WLA-lite checkpoint. Train it first with "
+            f"`python {root}/repos/steadysky-fourier/scripts/train_wla_lite_autoencoder.py` "
+            "or set STEADYSKY_WLA_LITE_CKPT."
+        )
+    base_loss = f'''    losses:
+    -   type: "l2"
+        channel_weights: "constant"
+        temp_diff_normalization: !!bool True
+        relative_weight: 1.0
+        parameters:
+            squared: !!bool True
+    -   type: "latent_feature_mmd"
+        channel_weights: "constant"
+        relative_weight: {regularizer_weights}
+        parameters:
+            checkpoint_path: "{checkpoint_path}"
+            latent_channels: 32
+            hidden_channels: 64
+            include_global_stats: !!bool True
+            include_latent_mean: !!bool True
+            include_latent_std: !!bool True
+            include_latent_grid: !!bool True
+            reconstruction_weight: {reconstruction_weight}
             bandwidth: 1.0
 '''
     original = '''    losses:

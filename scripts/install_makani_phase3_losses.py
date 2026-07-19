@@ -405,6 +405,168 @@ class RegionalFeatureMMDLoss(FeatureMMDLoss):
         return torch.cat(feats, dim=1)
 
 
+class _SteadySkyLatentAutoencoder(torch.nn.Module):
+    """Small weather autoencoder used only for frozen latent losses.
+
+    This is a deliberately lightweight WLA-inspired module. The official WLA
+    code uses a transformer autoencoder and binary spherical quantization; for
+    this controlled four-variable experiment we keep the same two-stage idea
+    but use a compact convolutional encoder that can be trained locally before
+    the SFNO run.
+    """
+
+    def __init__(self, in_channels: int, latent_channels: int = 32, hidden_channels: int = 64):
+        super().__init__()
+        self.encoder = torch.nn.Sequential(
+            torch.nn.Conv2d(in_channels, hidden_channels, kernel_size=5, stride=2, padding=2),
+            torch.nn.GELU(),
+            torch.nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, stride=2, padding=1),
+            torch.nn.GELU(),
+            torch.nn.Conv2d(hidden_channels, latent_channels, kernel_size=3, stride=2, padding=1),
+            torch.nn.GroupNorm(num_groups=1, num_channels=latent_channels),
+            torch.nn.GELU(),
+        )
+        self.decoder = torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(latent_channels, hidden_channels, kernel_size=4, stride=2, padding=1),
+            torch.nn.GELU(),
+            torch.nn.ConvTranspose2d(hidden_channels, hidden_channels, kernel_size=4, stride=2, padding=1),
+            torch.nn.GELU(),
+            torch.nn.ConvTranspose2d(hidden_channels, in_channels, kernel_size=4, stride=2, padding=1),
+        )
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        return self.encoder(x)
+
+    def decode(self, z: torch.Tensor, output_shape: Tuple[int, int]) -> torch.Tensor:
+        x = self.decoder(z)
+        if x.shape[-2:] != output_shape:
+            x = torch.nn.functional.interpolate(x, size=output_shape, mode="bilinear", align_corners=False)
+        return x
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.decode(self.encode(x), x.shape[-2:])
+
+
+class LatentFeatureMMDLoss(FeatureMMDLoss):
+    """Batch MMD in a frozen WLA-lite latent space.
+
+    Phase 6B's feature MMD is hand-crafted from means, variance and pooled
+    fields. This loss replaces that feature map with a learned encoder trained
+    as a small weather autoencoder. It keeps the SFNO architecture unchanged:
+    only the training-time distribution statistic changes.
+    """
+
+    def __init__(
+        self,
+        img_shape: Tuple[int, int],
+        crop_shape: Tuple[int, int],
+        crop_offset: Tuple[int, int],
+        channel_names: List[str],
+        grid_type: str,
+        checkpoint_path: str,
+        latent_channels: int = 32,
+        hidden_channels: int = 64,
+        include_global_stats: bool = True,
+        include_latent_mean: bool = True,
+        include_latent_std: bool = True,
+        include_latent_grid: bool = True,
+        reconstruction_weight: float = 0.0,
+        bandwidth: float = 1.0,
+        spatial_distributed: Optional[bool] = False,
+        eps: float = 1.0e-8,
+        **kwargs,
+    ):
+        super().__init__(
+            img_shape=img_shape,
+            crop_shape=crop_shape,
+            crop_offset=crop_offset,
+            channel_names=channel_names,
+            grid_type=grid_type,
+            include_mean=False,
+            include_log_variance=False,
+            include_lowpass_mean=False,
+            bandwidth=bandwidth,
+            spatial_distributed=spatial_distributed,
+            eps=eps,
+        )
+        self.checkpoint_path = str(checkpoint_path)
+        self.in_channels = len(channel_names)
+        self.latent_channels = int(latent_channels)
+        self.hidden_channels = int(hidden_channels)
+        self.include_global_stats = bool(include_global_stats)
+        self.include_latent_mean = bool(include_latent_mean)
+        self.include_latent_std = bool(include_latent_std)
+        self.include_latent_grid = bool(include_latent_grid)
+        self.reconstruction_weight = float(reconstruction_weight)
+        self._latent_model = None
+
+    def _load_latent_model(self, device: torch.device) -> _SteadySkyLatentAutoencoder:
+        if self._latent_model is None:
+            checkpoint = torch.load(self.checkpoint_path, map_location="cpu")
+            model_config = checkpoint.get("model_config", {})
+            self.in_channels = int(model_config.get("in_channels", self.in_channels))
+            model = _SteadySkyLatentAutoencoder(
+                in_channels=self.in_channels,
+                latent_channels=int(model_config.get("latent_channels", self.latent_channels)),
+                hidden_channels=int(model_config.get("hidden_channels", self.hidden_channels)),
+            )
+            state = checkpoint.get("model_state_dict", checkpoint)
+            model.load_state_dict(state, strict=True)
+            model.eval()
+            for parameter in model.parameters():
+                parameter.requires_grad_(False)
+            self._latent_model = model
+        return self._latent_model.to(device=device)
+
+    def _lead_batch(self, x: torch.Tensor) -> Tuple[torch.Tensor, int]:
+        if x.shape[1] == self.in_channels:
+            return x, 1
+        if x.shape[1] % self.in_channels != 0:
+            raise RuntimeError(
+                f"LatentFeatureMMDLoss expected {self.in_channels} channels or a multiple, got {x.shape[1]}"
+            )
+        batch, channels, height, width = x.shape
+        leads = channels // self.in_channels
+        return x.reshape(batch, leads, self.in_channels, height, width).reshape(batch * leads, self.in_channels, height, width), leads
+
+    def _latent_features(self, x: torch.Tensor) -> torch.Tensor:
+        model = self._load_latent_model(x.device)
+        x_for_encoder, _ = self._lead_batch(x.to(dtype=torch.float32))
+        z = model.encode(x_for_encoder)
+        feats = []
+        if self.include_global_stats:
+            feats.append(super()._features(x_for_encoder))
+        if self.include_latent_mean:
+            feats.append(z.mean(dim=(-2, -1)))
+        if self.include_latent_std:
+            z_centered = z - z.mean(dim=(-2, -1), keepdim=True)
+            feats.append(torch.log(z_centered.square().mean(dim=(-2, -1)) + self.eps))
+        if self.include_latent_grid:
+            pooled = torch.nn.functional.adaptive_avg_pool2d(z, output_size=(6, 12))
+            feats.append(pooled.flatten(start_dim=1))
+        if not feats:
+            raise RuntimeError("LatentFeatureMMDLoss needs at least one feature family")
+        return torch.cat([f.flatten(start_dim=1) for f in feats], dim=1)
+
+    def _features(self, x: torch.Tensor) -> torch.Tensor:
+        return self._latent_features(x)
+
+    def forward(self, prd: torch.Tensor, tar: torch.Tensor, wgt: Optional[torch.Tensor] = None, **kwargs) -> torch.Tensor:
+        mmd = super().forward(prd, tar, wgt=wgt, **kwargs)
+        if self.reconstruction_weight <= 0:
+            return mmd
+        model = self._load_latent_model(prd.device)
+        pred_float = prd.to(dtype=torch.float32)
+        pred_leads, num_leads = self._lead_batch(pred_float)
+        recon = model(pred_leads)
+        recon_loss = (recon - pred_leads).square().mean(dim=(-2, -1))
+        recon_loss = recon_loss.reshape(prd.shape[0], num_leads * self.in_channels)
+        if wgt is not None:
+            channel_weight = wgt.mean(dim=(-2, -1))
+            recon_loss = recon_loss * channel_weight
+        return mmd + self.reconstruction_weight * recon_loss.to(dtype=mmd.dtype)
+
+
 class ShortLeadLpLoss(GeometricBaseLoss):
     """Extra pointwise anchor on the first few rollout leads.
 
@@ -625,6 +787,8 @@ def install(makani_root: Path) -> None:
         extra_imports.append("FeatureMMDLoss")
     if "RegionalFeatureMMDLoss" not in registry_text:
         extra_imports.append("RegionalFeatureMMDLoss")
+    if "LatentFeatureMMDLoss" not in registry_text:
+        extra_imports.append("LatentFeatureMMDLoss")
     if "ShortLeadLpLoss" not in registry_text:
         extra_imports.append("ShortLeadLpLoss")
     if "SpatialMeanDriftLoss" not in registry_text:
@@ -648,6 +812,8 @@ def install(makani_root: Path) -> None:
         registry_text = registry_text.replace(map_insert, map_insert + '    "feature_mmd": FeatureMMDLoss,\n')
     if '"regional_feature_mmd": RegionalFeatureMMDLoss' not in registry_text:
         registry_text = registry_text.replace(map_insert, map_insert + '    "regional_feature_mmd": RegionalFeatureMMDLoss,\n')
+    if '"latent_feature_mmd": LatentFeatureMMDLoss' not in registry_text:
+        registry_text = registry_text.replace(map_insert, map_insert + '    "latent_feature_mmd": LatentFeatureMMDLoss,\n')
     if '"short_lead_l2": ShortLeadLpLoss' not in registry_text:
         registry_text = registry_text.replace(map_insert, map_insert + '    "short_lead_l2": ShortLeadLpLoss,\n')
     if '"spatial_mean_drift": SpatialMeanDriftLoss' not in registry_text:
@@ -674,6 +840,10 @@ def install(makani_root: Path) -> None:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
     init_text = init_file.read_text(encoding="utf-8")
     init_line = "from .steadysky_fourier_loss import RegionalFeatureMMDLoss\n"
+    if init_line not in init_text:
+        init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
+    init_text = init_file.read_text(encoding="utf-8")
+    init_line = "from .steadysky_fourier_loss import LatentFeatureMMDLoss\n"
     if init_line not in init_text:
         init_file.write_text(init_text.rstrip() + "\n" + init_line, encoding="utf-8")
     init_text = init_file.read_text(encoding="utf-8")
